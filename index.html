@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PR SLAYER</title>
+  <meta name="description" content="Defeat your PR deadline by rage-typing." />
+  <style>
+    :root {
+      --bg: #090b10;
+      --panel: #11151f;
+      --ink: #f5f7fb;
+      --muted: #8b93a7;
+      --acid: #d6ff00;
+      --danger: #ff3b3b;
+      --cyan: #57e8ff;
+      --purple: #9b5cff;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; min-height: 100%; margin: 0; background: var(--bg); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow-x: hidden; }
+    body { min-height: 100vh; display: grid; place-items: center; }
+    button { font: inherit; }
+
+    .noise {
+      position: fixed; inset: 0; pointer-events: none; opacity: .08; z-index: 1;
+      background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.09) 0, rgba(255,255,255,.09) 1px, transparent 1px, transparent 3px);
+      mix-blend-mode: overlay;
+    }
+
+    .arena { position: relative; z-index: 2; width: min(1120px, 94vw); min-height: 92vh; padding: 22px 0 26px; display: grid; grid-template-rows: auto 1fr auto; gap: 14px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 900; letter-spacing: .08em; }
+    .brand .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--acid); box-shadow: 0 0 24px var(--acid); }
+    .tag { color: var(--muted); font-size: 13px; }
+    .stats { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .stat { border: 1px solid #2a3140; background: rgba(17,21,31,.8); padding: 8px 11px; border-radius: 999px; font-size: 13px; color: var(--muted); }
+    .stat b { color: var(--ink); }
+
+    .stage { position: relative; overflow: hidden; border: 1px solid #252c3a; border-radius: 28px; background:
+      radial-gradient(circle at 50% 30%, rgba(155,92,255,.16), transparent 34%),
+      radial-gradient(circle at 20% 65%, rgba(87,232,255,.08), transparent 30%),
+      linear-gradient(180deg, #111521 0%, #090b10 100%);
+      min-height: 660px;
+      box-shadow: 0 35px 100px rgba(0,0,0,.45);
+    }
+
+    .stage::before { content: ""; position: absolute; inset: 0; opacity: .16; background-size: 44px 44px; background-image: linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px); mask-image: linear-gradient(to bottom, black, transparent 72%); }
+
+    .hud { position: absolute; left: 5%; right: 5%; top: 34px; z-index: 4; }
+    .boss-label { display: flex; justify-content: space-between; align-items: end; margin-bottom: 9px; font-size: 12px; letter-spacing: .18em; font-weight: 900; color: #b8c1d5; }
+    .hp-track { height: 24px; border: 2px solid #3a4254; border-radius: 999px; padding: 3px; background: #07090e; box-shadow: inset 0 0 20px rgba(0,0,0,.8); }
+    .hp { height: 100%; width: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--danger), #ff7a3b); box-shadow: 0 0 26px rgba(255,59,59,.38); transition: width .11s linear; }
+
+    .boss-wrap { position: absolute; inset: 110px 0 135px; display: grid; place-items: center; z-index: 3; }
+    .boss { position: relative; width: min(660px, 80vw); text-align: center; user-select: none; transform-origin: center; }
+    .deadline {
+      font-size: clamp(64px, 10vw, 142px); line-height: .84; font-weight: 1000; letter-spacing: -.075em;
+      color: #fff; text-shadow: 0 8px 0 #282f3c, 0 14px 0 #171c26, 0 0 45px rgba(255,255,255,.08);
+      transform: skew(-4deg) rotate(-1deg);
+    }
+    .face { display: inline-flex; align-items: center; justify-content: center; gap: 32px; margin-top: 25px; }
+    .eye { width: 48px; height: 30px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 35px rgba(255,59,59,.75); position: relative; overflow: hidden; }
+    .eye::after { content: ""; width: 11px; height: 11px; border-radius: 50%; background: #15171d; position: absolute; top: 9px; left: 20px; transition: transform .08s; transform: translate(var(--px, 0px), var(--py, 0px)); }
+    .mouth { width: 120px; height: 30px; border-radius: 8px 8px 60% 60%; border-bottom: 8px solid var(--danger); transform: translateY(5px); }
+    .speech { margin: 28px auto 0; min-height: 30px; max-width: 680px; padding: 0 18px; color: #bdc6da; font-size: clamp(15px, 2vw, 21px); font-weight: 700; letter-spacing: .01em; }
+
+    .combo { position: absolute; right: 6%; top: 115px; text-align: right; opacity: 0; transform: translateY(10px) scale(.95); transition: .16s; z-index: 5; }
+    .combo.show { opacity: 1; transform: translateY(0) scale(1); }
+    .combo .num { font-size: clamp(34px, 5vw, 72px); line-height: .9; color: var(--acid); font-weight: 1000; text-shadow: 0 0 28px rgba(214,255,0,.3); }
+    .combo .txt { font-size: 12px; letter-spacing: .2em; font-weight: 900; color: #bbc49e; }
+
+    .typing-zone { position: absolute; left: 5%; right: 5%; bottom: 28px; z-index: 6; }
+    .promptbox { border: 1px solid #2d3546; background: rgba(8,10,15,.88); backdrop-filter: blur(12px); border-radius: 18px; padding: 18px 18px 15px; box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+    .promptline { display: flex; align-items: center; gap: 10px; font-weight: 900; color: #dbe2f0; }
+    .keyhint { color: var(--acid); }
+    .typed { margin-top: 11px; min-height: 24px; color: #7e879a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .typed .cursor { color: var(--acid); animation: blink .7s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .start-screen, .victory { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; padding: 24px; background: rgba(6,8,12,.74); backdrop-filter: blur(10px); }
+    .card { width: min(680px, 94%); border: 1px solid #31394a; border-radius: 26px; padding: clamp(24px, 5vw, 44px); background: linear-gradient(180deg, rgba(21,26,38,.96), rgba(10,12,18,.96)); text-align: center; box-shadow: 0 35px 100px rgba(0,0,0,.45); }
+    .eyebrow { color: var(--acid); font-size: 12px; font-weight: 1000; letter-spacing: .22em; }
+    h1 { margin: 10px 0 12px; font-size: clamp(48px, 8vw, 88px); line-height: .86; letter-spacing: -.06em; }
+    .sub { color: #aeb8ca; font-size: clamp(16px, 2.4vw, 20px); line-height: 1.5; }
+    .rules { margin: 22px auto 0; max-width: 480px; text-align: left; color: #aab3c6; display: grid; gap: 9px; font-size: 14px; }
+    .rules b { color: white; }
+    .primary { margin-top: 25px; border: 0; border-radius: 999px; padding: 14px 24px; cursor: pointer; color: #0a0c10; background: var(--acid); font-weight: 1000; letter-spacing: .03em; box-shadow: 0 0 34px rgba(214,255,0,.25); transition: transform .12s, box-shadow .12s; }
+    .primary:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 0 48px rgba(214,255,0,.38); }
+
+    .victory { display: none; background: rgba(6,8,12,.56); }
+    .victory.show { display: grid; }
+    .victory h2 { font-size: clamp(48px, 8vw, 88px); line-height: .92; margin: 10px 0 12px; }
+    .grade { font-size: 68px; font-weight: 1000; color: var(--acid); margin: 4px 0 10px; }
+    .small { color: var(--muted); font-size: 13px; }
+
+    .particle { position: absolute; z-index: 10; font-weight: 1000; pointer-events: none; animation: fly .65s ease-out forwards; }
+    @keyframes fly { 0% { transform: translate(-50%, -50%) scale(.5) rotate(0); opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(1.25) rotate(var(--rot)); opacity: 0; } }
+
+    .damage { position: fixed; z-index: 30; font-weight: 1000; color: white; pointer-events: none; text-shadow: 0 3px 0 #000; animation: dmg .65s ease-out forwards; }
+    @keyframes dmg { from { transform: translate(-50%, -50%) scale(.7); opacity: 1; } to { transform: translate(-50%, -120px) scale(1.5) rotate(-7deg); opacity: 0; } }
+
+    .shake { animation: shake .13s linear; }
+    @keyframes shake { 0%,100% { transform: translate(0,0); } 25% { transform: translate(-8px,4px); } 50% { transform: translate(7px,-5px); } 75% { transform: translate(-5px,-3px); } }
+    .hit { animation: hit .12s ease-out; }
+    @keyframes hit { 0% { transform: scale(1); } 50% { transform: scale(.965) rotate(1.4deg); filter: brightness(1.7); } 100% { transform: scale(1); } }
+
+    .footer { color: #646d80; font-size: 12px; text-align: center; }
+    .footer span { color: #9da6b8; }
+
+    @media (max-width: 700px) {
+      .tag { display: none; }
+      .stage { min-height: 610px; }
+      .boss-wrap { inset: 125px 0 160px; }
+      .face { gap: 18px; }
+      .eye { width: 38px; height: 24px; }
+      .mouth { width: 90px; }
+      .combo { right: 8%; top: 120px; }
+    }
+
+    /* PR Simulator Styles */
+    .pr-modal {
+      position: fixed; inset: 0; z-index: 50; display: none; place-items: center; padding: 18px;
+      background: rgba(6, 8, 14, 0.88); backdrop-filter: blur(14px);
+    }
+    .pr-modal.show { display: grid; }
+    .pr-card {
+      width: min(720px, 95vw); max-height: 90vh; overflow-y: auto; border: 1px solid #333d52;
+      border-radius: 24px; padding: 26px; background: #0e121b; box-shadow: 0 30px 90px rgba(0,0,0,0.6);
+      text-align: left;
+    }
+    .pr-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+    .pr-close { background: none; border: 0; color: #727c91; font-size: 24px; cursor: pointer; line-height: 1; padding: 4px; }
+    .pr-close:hover { color: #fff; }
+    .pr-tabs { display: flex; gap: 10px; margin: 16px 0 14px; }
+    .pr-tab {
+      flex: 1; padding: 12px 14px; border: 1px solid #2f384c; border-radius: 12px; background: #131824;
+      color: #9da6b8; font-weight: 700; font-size: 13px; cursor: pointer; text-align: center; transition: all .15s;
+    }
+    .pr-tab.active-fail {
+      background: rgba(255, 59, 59, 0.16); border-color: #ff3b3b; color: #ff8585;
+      box-shadow: 0 0 20px rgba(255,59,59,0.25);
+    }
+    .pr-tab.active-pass {
+      background: rgba(87, 232, 255, 0.16); border-color: #57e8ff; color: #7cf1ff;
+      box-shadow: 0 0 20px rgba(87,232,255,0.25);
+    }
+    .pr-preview {
+      border-radius: 16px; padding: 18px; margin: 14px 0; font-size: 14px; line-height: 1.6;
+      white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      border: 1px solid #2c3547; min-height: 130px;
+    }
+    .pr-preview.fail {
+      background: #190e13; border-color: #591b2b; color: #ffb4c2;
+      box-shadow: inset 0 0 30px rgba(255, 59, 59, 0.08);
+    }
+    .pr-preview.pass {
+      background: #0b1319; border-color: #1a3c4c; color: #b7e8f5;
+      box-shadow: inset 0 0 30px rgba(87, 232, 255, 0.05);
+    }
+    .pr-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+    .pr-field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #798399; margin-bottom: 5px; font-weight: 700; }
+    .pr-field input {
+      width: 100%; border: 1px solid #2a3346; background: #0a0d14; color: #fff;
+      padding: 9px 12px; border-radius: 10px; font-size: 13px; font-family: inherit;
+    }
+    .pr-field input:focus { outline: none; border-color: var(--cyan); }
+    .pr-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+    .btn-secondary {
+      border: 1px solid #333c50; background: #161b26; color: #c3cbdb; padding: 9px 16px;
+      border-radius: 999px; font-size: 13px; cursor: pointer; font-weight: 700; transition: all .15s;
+    }
+    .btn-secondary:hover { background: #202737; color: #fff; }
+    .btn-send {
+      border: 0; background: var(--acid); color: #090b10; padding: 9px 20px;
+      border-radius: 999px; font-size: 13px; cursor: pointer; font-weight: 900;
+      box-shadow: 0 0 20px rgba(214,255,0,0.25); transition: transform .1s;
+    }
+    .btn-send:hover { transform: translateY(-1px); }
+    .status-toast { font-size: 12px; color: #9da6b8; margin-top: 10px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <div class="noise"></div>
+  <main class="arena" id="arena">
+    <div class="topbar">
+      <div>
+        <div class="brand"><span class="dot"></span> PR SLAYER</div>
+        <div class="tag">An extremely serious developer productivity tool.</div>
+      </div>
+      <div class="stats">
+        <div class="stat">KEYS <b id="keys">0</b></div>
+        <div class="stat">BEST COMBO <b id="best">0x</b></div>
+        <div class="stat">TIME <b id="time">0.0s</b></div>
+        <button class="stat" id="prSimBtn" style="cursor:pointer; border-color:#9b5cff; color:#e0c8ff; background:rgba(155,92,255,0.18); font-weight:700;">🎭 PR iMessage</button>
+      </div>
+    </div>
+
+    <section class="stage" id="stage" aria-label="PR Slayer game arena">
+      <div class="hud">
+        <div class="boss-label"><span>PR_SLAYER.EXE</span><span id="hpText">100%</span></div>
+        <div class="hp-track"><div class="hp" id="hp"></div></div>
+      </div>
+
+      <div class="combo" id="comboBox">
+        <div class="num" id="combo">0x</div>
+        <div class="txt">RAGE COMBO</div>
+      </div>
+
+      <div class="boss-wrap">
+        <div class="boss" id="boss">
+          <div class="deadline">PR<br>SLAYER</div>
+          <div class="face" id="face">
+            <div class="eye"></div><div class="mouth"></div><div class="eye"></div>
+          </div>
+          <div class="speech" id="speech">You had all week. Curious.</div>
+        </div>
+      </div>
+
+      <div class="typing-zone">
+        <div class="promptbox">
+          <div class="promptline"><span class="keyhint">TYPE ANYTHING.</span> Faster typing = bigger hits.</div>
+          <div class="typed" id="typed">Your furious keyboard noises appear here <span class="cursor">▌</span></div>
+        </div>
+      </div>
+
+      <div class="start-screen" id="startScreen">
+        <div class="card">
+          <div class="eyebrow">NERDCONF FUN BUILD</div>
+          <h1>PR<br>SLAYER</h1>
+          <div class="sub">Your PR deadline has become sentient. There is only one known cure: <b>aggressive typing.</b></div>
+          <div class="rules">
+            <div>⌨️ <b>Type fast</b> to build a combo and hit harder.</div>
+            <div>␣ <b>Spacebar</b> lands a mini-critical hit.</div>
+            <div>↵ <b>Enter</b> screams “SEND IT” and deals a heavy blow.</div>
+            <div>⌫ <b>Backspace heals the boss.</b> Editing has consequences.</div>
+          </div>
+          <button class="primary" id="startBtn">BEGIN POOR DECISIONS</button>
+        </div>
+      </div>
+
+      <div class="victory" id="victory">
+        <div class="card">
+          <div class="eyebrow">PR DESTROYED & MERGED</div>
+          <h2>YOU SHIPPED<br>SOMETHING.</h2>
+          <div class="grade" id="grade">S</div>
+          <div class="sub" id="resultText">0 keys. 0.0 seconds. Remarkably irresponsible.</div>
+          <button class="primary" id="againBtn">CREATE ANOTHER CRISIS</button>
+          <div class="small" style="margin-top:14px">Tip: try winning with fewer backspaces.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PR iMessage Simulator Modal -->
+    <div class="pr-modal" id="prModal" role="dialog" aria-modal="true" aria-labelledby="prModalTitle">
+      <div class="pr-card">
+        <div class="pr-header">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span style="font-size: 11px; font-weight: 900; letter-spacing: 0.18em; color: var(--acid);">GITHUB PR TRACKER & MESSAGES AUTOMATION</span>
+              <span style="font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(87,232,255,0.15); border: 1px solid #57e8ff; color: #57e8ff; font-weight: 700;">🐙 @manvendersingh21</span>
+            </div>
+            <h3 id="prModalTitle" style="margin: 6px 0 2px; font-size: 20px;">Live GitHub PR Monitor</h3>
+            <div style="font-size: 13px; color: #8b93a7;">Failures get roasted by Shakespeare. Approvals get an ice-cold: <i>"You could've done better on that PR."</i></div>
+          </div>
+          <button class="pr-close" id="prCloseBtn" aria-label="Close modal">&times;</button>
+        </div>
+
+        <div style="margin: 12px 0; padding: 10px 14px; background: #080b12; border: 1px solid #232a3a; border-radius: 12px;">
+          <div style="font-size: 11px; font-weight: 700; color: #8b93a7; margin-bottom: 6px;">SELECT ONE OF YOUR REAL GITHUB PRS TO PREVIEW:</div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="prChipsContainer">
+            <button type="button" class="btn-secondary pr-chip" style="font-size:11px; padding:4px 10px;" data-title="Deploy" data-num="145" data-repo="xtekky/chatgpt-clone">xtekky/chatgpt-clone #145</button>
+            <button type="button" class="btn-secondary pr-chip" style="font-size:11px; padding:4px 10px;" data-title="Refactoring backend" data-num="144" data-repo="xtekky/chatgpt-clone">xtekky/chatgpt-clone #144</button>
+            <button type="button" class="btn-secondary pr-chip" style="font-size:11px; padding:4px 10px;" data-title="Ft 12/09/25 prtflio dsgn" data-num="9" data-repo="shanky-12/Datadecor-website">shanky-12/Datadecor-website #9</button>
+            <button type="button" class="btn-secondary pr-chip" style="font-size:11px; padding:4px 10px;" data-title="Manu/auth" data-num="20" data-repo="KennyAngelikas/Overlap-chatgptClone">KennyAngelikas/Overlap-chatgptClone #20</button>
+          </div>
+        </div>
+
+        <div class="pr-tabs">
+          <button class="pr-tab active-fail" id="tabFail">🎭 PR Fails in Production (Shakespeare Insult)</button>
+          <button class="pr-tab" id="tabPass">❄️ PR Passes (Cold Guy: "You could've done better")</button>
+        </div>
+
+        <div class="pr-inputs">
+          <div class="pr-field">
+            <label for="prRecipient">iMessage Recipient</label>
+            <input type="text" id="prRecipient" placeholder="+1XXXXXXXXXX or user@icloud.com" />
+          </div>
+          <div class="pr-field">
+            <label for="prTitle">PR Title / Summary</label>
+            <input type="text" id="prTitle" value="Emergency hotfix directly on production" />
+          </div>
+        </div>
+
+        <div class="pr-field" style="margin-bottom: 12px;">
+          <label>Generated iMessage Preview</label>
+          <div class="pr-preview fail" id="prPreview">Generating theatrical insult...</div>
+        </div>
+
+        <div class="pr-actions">
+          <button class="btn-send" id="btnSendImessage">📱 Send iMessage</button>
+          <button class="btn-secondary" id="btnReroll">🎲 Reroll Text</button>
+          <button class="btn-secondary" id="btnCopyTerminal">📋 Copy CLI Command</button>
+          <button class="btn-secondary" id="btnCopyMsg">📋 Copy Message</button>
+        </div>
+        <div class="status-toast" id="prStatusToast"></div>
+      </div>
+    </div>
+
+    <div class="footer">Best experienced on a physical keyboard. <span>No data is collected. The deadline is lying to you.</span></div>
+  </main>
+
+  <script>
+    (() => {
+      const stage = document.getElementById('stage');
+      const boss = document.getElementById('boss');
+      const hpEl = document.getElementById('hp');
+      const hpText = document.getElementById('hpText');
+      const speech = document.getElementById('speech');
+      const typed = document.getElementById('typed');
+      const comboEl = document.getElementById('combo');
+      const comboBox = document.getElementById('comboBox');
+      const keysEl = document.getElementById('keys');
+      const bestEl = document.getElementById('best');
+      const timeEl = document.getElementById('time');
+      const startScreen = document.getElementById('startScreen');
+      const victory = document.getElementById('victory');
+      const resultText = document.getElementById('resultText');
+      const gradeEl = document.getElementById('grade');
+      const startBtn = document.getElementById('startBtn');
+      const againBtn = document.getElementById('againBtn');
+
+      let hp = 100;
+      let combo = 0;
+      let bestCombo = 0;
+      let keys = 0;
+      let backspaces = 0;
+      let started = false;
+      let won = false;
+      let lastKey = 0;
+      let startTime = 0;
+      let timer = null;
+      let buffer = '';
+      let audio = null;
+
+      const taunts = [
+        'You had all week. Curious.',
+        'That keyboard has a family.',
+        'Faster. Your future self is watching.',
+        'This is not what “time management” means.',
+        'I can hear your GPA from here.',
+        'Bold strategy: panic as a workflow.',
+        'The spacebar did nothing to deserve this.',
+        'Productivity gurus HATE this one weird trick.',
+        'Excellent. Convert anxiety into keystrokes.',
+        'You call this a draft? I call this evidence.'
+      ];
+
+      const hurtTaunts = [
+        'WAIT—YOU ACTUALLY STARTED?',
+        'This was supposed to be a soft deadline!',
+        'Stop being weirdly effective!',
+        'WHO TAUGHT YOU TOUCH TYPING?',
+        'Not the combo. Anything but the combo.',
+        'I regret becoming sentient.'
+      ];
+
+      function initAudio() {
+        if (audio) return;
+        audio = new (window.AudioContext || window.webkitAudioContext)();
+      }
+
+      function beep(freq = 220, duration = .05, type = 'square', gain = .025) {
+        if (!audio) return;
+        const osc = audio.createOscillator();
+        const g = audio.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        g.gain.setValueAtTime(gain, audio.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + duration);
+        osc.connect(g); g.connect(audio.destination);
+        osc.start(); osc.stop(audio.currentTime + duration);
+      }
+
+      function boom() {
+        if (!audio) return;
+        const now = audio.currentTime;
+        [90, 64, 42].forEach((f, i) => {
+          const osc = audio.createOscillator();
+          const g = audio.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(f, now);
+          osc.frequency.exponentialRampToValueAtTime(24, now + .28);
+          g.gain.setValueAtTime(.08 / (i + 1), now);
+          g.gain.exponentialRampToValueAtTime(.0001, now + .3);
+          osc.connect(g); g.connect(audio.destination);
+          osc.start(now + i * .015); osc.stop(now + .32);
+        });
+      }
+
+      function reset() {
+        hp = 100; combo = 0; bestCombo = 0; keys = 0; backspaces = 0;
+        lastKey = 0; buffer = ''; won = false; started = true; startTime = performance.now();
+        hpEl.style.width = '100%'; hpText.textContent = '100%';
+        comboEl.textContent = '0x'; comboBox.classList.remove('show');
+        keysEl.textContent = '0'; bestEl.textContent = '0x';
+        speech.textContent = taunts[0];
+        typed.innerHTML = 'Start typing. Regret nothing. <span class="cursor">▌</span>';
+        victory.classList.remove('show'); startScreen.style.display = 'none';
+        clearInterval(timer);
+        timer = setInterval(() => {
+          if (!started || won) return;
+          timeEl.textContent = ((performance.now() - startTime) / 1000).toFixed(1) + 's';
+        }, 50);
+      }
+
+      function start() {
+        initAudio();
+        if (audio.state === 'suspended') audio.resume();
+        reset();
+        beep(330, .08, 'square', .04);
+        setTimeout(() => beep(440, .08, 'square', .04), 90);
+        setTimeout(() => beep(660, .10, 'square', .04), 180);
+      }
+
+      function updateHp() {
+        hp = Math.max(0, Math.min(100, hp));
+        hpEl.style.width = hp + '%';
+        hpText.textContent = Math.ceil(hp) + '%';
+        if (hp <= 60 && hp > 30) hpEl.style.filter = 'hue-rotate(20deg) saturate(1.25)';
+        else if (hp <= 30) hpEl.style.filter = 'hue-rotate(48deg) saturate(1.4)';
+        else hpEl.style.filter = 'none';
+      }
+
+      function hitBoss(damage, crit = false) {
+        hp -= damage;
+        updateHp();
+        boss.classList.remove('hit');
+        void boss.offsetWidth;
+        boss.classList.add('hit');
+        if (crit) {
+          stage.classList.remove('shake'); void stage.offsetWidth; stage.classList.add('shake');
+          boom();
+        } else {
+          beep(180 + Math.min(combo, 30) * 8, .035, 'square', .018);
+        }
+        spawnDamage(damage, crit);
+        if (Math.random() < .22 || crit) speech.textContent = hurtTaunts[Math.floor(Math.random() * hurtTaunts.length)];
+        if (hp <= 0) win();
+      }
+
+      function healBoss(amount) {
+        hp += amount;
+        updateHp();
+        combo = 0;
+        comboEl.textContent = '0x';
+        comboBox.classList.remove('show');
+        speech.textContent = 'EDITING? COWARDICE. +HP';
+        beep(90, .12, 'sawtooth', .04);
+      }
+
+      function spawnDamage(amount, crit) {
+        const rect = boss.getBoundingClientRect();
+        const d = document.createElement('div');
+        d.className = 'damage';
+        d.textContent = crit ? `-${Math.ceil(amount)}!` : `-${Math.ceil(amount)}`;
+        d.style.left = (rect.left + rect.width * (.35 + Math.random() * .3)) + 'px';
+        d.style.top = (rect.top + rect.height * (.25 + Math.random() * .35)) + 'px';
+        d.style.fontSize = (crit ? 36 : 22) + 'px';
+        d.style.color = crit ? 'var(--acid)' : 'white';
+        document.body.appendChild(d);
+        setTimeout(() => d.remove(), 700);
+      }
+
+      function confettiBurst() {
+        const glyphs = ['★', '✦', '⌨', '!', '✓', '404', 'SHIP', '!!!'];
+        for (let i = 0; i < 90; i++) {
+          const p = document.createElement('div');
+          p.className = 'particle';
+          p.textContent = glyphs[Math.floor(Math.random() * glyphs.length)];
+          p.style.left = (48 + (Math.random() - .5) * 20) + '%';
+          p.style.top = (45 + (Math.random() - .5) * 10) + '%';
+          p.style.setProperty('--dx', ((Math.random() - .5) * 900) + 'px');
+          p.style.setProperty('--dy', ((Math.random() - .5) * 650) + 'px');
+          p.style.setProperty('--rot', ((Math.random() - .5) * 900) + 'deg');
+          p.style.color = ['#d6ff00','#57e8ff','#ff3b3b','#ffffff','#9b5cff'][Math.floor(Math.random()*5)];
+          p.style.fontSize = (12 + Math.random() * 22) + 'px';
+          stage.appendChild(p);
+          setTimeout(() => p.remove(), 800);
+        }
+      }
+
+      function grade(seconds) {
+        const score = Math.max(0, 100 - seconds * 2.2 - backspaces * 6 + bestCombo * 1.2);
+        if (score > 92) return 'S';
+        if (score > 78) return 'A';
+        if (score > 62) return 'B';
+        if (score > 45) return 'C';
+        return 'D';
+      }
+
+      function win() {
+        won = true; started = false; clearInterval(timer);
+        const secs = (performance.now() - startTime) / 1000;
+        timeEl.textContent = secs.toFixed(1) + 's';
+        hpEl.style.width = '0%'; hpText.textContent = '0%';
+        speech.textContent = '…fine. ship it.';
+        stage.classList.add('shake');
+        boom(); setTimeout(boom, 130); setTimeout(boom, 260);
+        confettiBurst();
+        const g = grade(secs);
+        gradeEl.textContent = g;
+        const roast = backspaces === 0 ? 'No backspaces. Unhinged confidence.' : `${backspaces} backspace${backspaces === 1 ? '' : 's'}. The boss noticed.`;
+        resultText.textContent = `${keys} keys · ${secs.toFixed(1)} seconds · ${bestCombo}x best combo. ${roast}`;
+        setTimeout(() => victory.classList.add('show'), 650);
+      }
+
+      function eyeFollow(e) {
+        const eyes = document.querySelectorAll('.eye');
+        eyes.forEach(eye => {
+          const r = eye.getBoundingClientRect();
+          const dx = Math.max(-8, Math.min(8, (e.clientX - (r.left + r.width/2)) / 28));
+          const dy = Math.max(-5, Math.min(5, (e.clientY - (r.top + r.height/2)) / 28));
+          eye.style.setProperty('--px', dx+'px');
+          eye.style.setProperty('--py', dy+'px');
+          eye.style.transform = `translate(${dx*.15}px, ${dy*.15}px)`;
+        });
+      }
+
+      window.addEventListener('mousemove', eyeFollow);
+
+      window.addEventListener('keydown', (e) => {
+        if (!started || won || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+        const now = performance.now();
+        const dt = lastKey ? now - lastKey : 999;
+        lastKey = now;
+
+        if (e.key === 'Backspace') {
+          e.preventDefault();
+          backspaces++;
+          buffer = buffer.slice(0, -1);
+          healBoss(4.5);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          keys++;
+          combo += 2;
+          bestCombo = Math.max(bestCombo, combo);
+          buffer += ' ↵ SEND IT ';
+          hitBoss(7 + Math.min(combo, 15) * .22, true);
+          speech.textContent = 'SEND IT?! YOU MANIAC.';
+        } else if (e.key === ' ') {
+          e.preventDefault();
+          keys++;
+          combo = dt < 320 ? combo + 1 : 1;
+          bestCombo = Math.max(bestCombo, combo);
+          buffer += ' ';
+          hitBoss(2.2 + Math.min(combo, 20) * .08, true);
+        } else if (e.key.length === 1) {
+          e.preventDefault();
+          keys++;
+          if (dt < 210) combo += 2;
+          else if (dt < 360) combo += 1;
+          else combo = Math.max(1, combo - 2);
+          bestCombo = Math.max(bestCombo, combo);
+          buffer += e.key;
+          const dmg = 1.0 + Math.min(combo, 30) * .055;
+          hitBoss(dmg, combo > 0 && combo % 20 === 0);
+          if (Math.random() < .08) speech.textContent = taunts[Math.floor(Math.random() * taunts.length)];
+        } else {
+          return;
+        }
+
+        keysEl.textContent = keys;
+        bestEl.textContent = bestCombo + 'x';
+        comboEl.textContent = combo + 'x';
+        comboBox.classList.toggle('show', combo >= 4);
+        const shown = buffer.slice(-78).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        typed.innerHTML = shown + '<span class="cursor">▌</span>';
+      }, { passive: false });
+
+      startBtn.addEventListener('click', start);
+      againBtn.addEventListener('click', start);
+
+      // ==========================================
+      // PR iMessage Simulator Interactive Logic
+      // ==========================================
+      const prSimBtn = document.getElementById('prSimBtn');
+      const prModal = document.getElementById('prModal');
+      const prCloseBtn = document.getElementById('prCloseBtn');
+      const tabFail = document.getElementById('tabFail');
+      const tabPass = document.getElementById('tabPass');
+      const prRecipient = document.getElementById('prRecipient');
+      const prTitle = document.getElementById('prTitle');
+      const prPreview = document.getElementById('prPreview');
+      const btnSendImessage = document.getElementById('btnSendImessage');
+      const btnReroll = document.getElementById('btnReroll');
+      const btnCopyTerminal = document.getElementById('btnCopyTerminal');
+      const btnCopyMsg = document.getElementById('btnCopyMsg');
+      const prStatusToast = document.getElementById('prStatusToast');
+
+      let currentPrStatus = 'fail';
+
+      const shakespeareInsults = [
+        "🎭 HARK, THOU PLAGUE OF PRODUCTION! 🎭\n\nAlas, what black and hideous pestilence hath thy clumsy fingers unleashed upon the sacred servers?! Thou hast thrust thy scurvy patch into Holy Production, and lo—the temple lieth shattered, the logs vomit crimson tears, and the SREs weep into the abyss!\n\nThou whoreson, beetle-headed, beslubbering malt-worm! Didst thou dare merge with neither test nor shame? Thou art a boil, a plague sore, an embossed carbuncle upon git history! May thy stack traces haunt thee till the end of days. Revert thy cursed branch and crawl into exile, for thy Pull Request hath perished most foully!",
+        "⚡ BY APOLLO, WHAT MONSTROUS FOLLY IS THIS?! ⚡\n\nO villainous knave of the terminal! Thou didst swear thy code was sound, yet upon the anvil of Production it splintered like wanton glass! Thou clouted, rump-fed hedge-pig!\n\nThe uptime hath plummeted into Tartarus, and thy name is cursed from engineering even unto leadership! Was thy brain curdled with sour grog when thou didst approve thine own catastrophe?! Fie, fie upon thee, thou lump of foul deformity! Go wash thy hands in tears and rollback ere the CTO striketh thee down!",
+        "🗡️ DISASTER MOST FOUL AND UNNATURAL! 🗡️\n\nHear me, thou spongy, milk-livered miscreant! Thou hast plunged the poisoned dagger of ignorance straight into the beating heart of Production! The database groaneth, the pods perish like autumn leaves, and thy pull request drowneth in its own ignominy!\n\nA pox upon thy commits, thou rank rampallian, thou fustilarian! More poisonous art thou than the adder. Go hide thy disgraced visage, thou illiterate codpiece, and speak no more of deployment till thou hast learned the humble craft of unit tests!",
+        "💀 WOE UNTO THE REALM, PRODUCTION BURNETH! 💀\n\nWhat wretched abomination hast thou hatched, thou knotty-pated fool?! Production collapseth under the insolence of thy pull request! Thou art unfit for the company of developers, nay, unfit even for the staging cluster!\n\nThou gorbellied, flap-ear'd ruffian! Thine errors cry out to the high heavens for vengeance. Thy build hath choked upon its own hubris and perished in the dark. Repent, thou scurvy knave, and pray the git log forgetteth thy sins!",
+        "🥀 THOU DULL UNVARNISHED IDIOT OF THE REPO! 🥀\n\nStand accused, thou churlish, sheep-biting coxcomb! Thou didst look upon Production and think, 'Lo, let me inflict my broken logic upon the innocent users!' And now, behold: 500s across the kingdom, the monitors scream in agony, and thy pull request lieth dead in the ditch!\n\nI would challenge thee to a battle of wits, but I perceive thou art completely unarmed. Roll back thy foul catastrophe this instant, thou bawdy barnacle, and beg mercy upon thy bended knees!"
+      ];
+
+      const coldGuyApprovals = [
+        "Your PR has been approved.\n\nYou could've done better on that PR. The production build passed, but merely meeting the bare minimum expectation is not an achievement. Merge it and get back to work.",
+        "Your PR has been approved.\n\nYou could've done better on that PR. Production didn't crash. Cool. That was literally your job. Don't expect a medal. Next ticket is waiting.",
+        "Your PR has been approved.\n\nHonestly? You could've done better on that PR. The diff is bloated and the commit history is a mess. Passed, barely. Don't let it inflate your ego. Merge and move on.",
+        "Your PR has been approved.\n\nYou could've done better on that PR. The bar was on the floor and you managed not to trip over it. Ship it. Don't text back.",
+        "Your PR has been approved.\n\nYou could've done better on that PR. Took you long enough. It works, but we have five more blockers in the sprint. Back to your desk.",
+        "Your PR has been approved.\n\nYou could've done better on that PR. Adequate at best. Nothing to boast about. Merge before I find another nitpick.",
+        "Your PR has been approved.\n\nYou could've done better on that PR. It's green, but nobody is impressed. Close the ticket."
+      ];
+
+      let currentRepo = 'xtekky/chatgpt-clone';
+      let currentPrNum = '145';
+
+      function renderPrPreview(repo = currentRepo, num = currentPrNum) {
+        currentRepo = repo;
+        currentPrNum = num;
+        const title = prTitle.value.trim() || "Hotfix";
+        if (currentPrStatus === 'fail') {
+          const insult = shakespeareInsults[Math.floor(Math.random() * shakespeareInsults.length)];
+          prPreview.className = 'pr-preview fail';
+          prPreview.textContent = `📦 ${repo} — 📜 PR #${num} — 🏷️ Title: '${title}' — 👤 Culprit: manvendersingh21 — 🏰 Realm: PRODUCTION\n\n${insult}`;
+        } else {
+          const cold = coldGuyApprovals[Math.floor(Math.random() * coldGuyApprovals.length)];
+          prPreview.className = 'pr-preview pass';
+          prPreview.textContent = `[${repo} | PR #${num} | '${title}']\n${cold}`;
+        }
+      }
+
+      document.querySelectorAll('.pr-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          prTitle.value = chip.dataset.title;
+          renderPrPreview(chip.dataset.repo, chip.dataset.num);
+          showToast(`Selected ${chip.dataset.repo} #${chip.dataset.num}!`);
+        });
+      });
+
+      function showToast(text, color = '#57e8ff') {
+        prStatusToast.style.color = color;
+        prStatusToast.textContent = text;
+        setTimeout(() => {
+          if (prStatusToast.textContent === text) prStatusToast.textContent = '';
+        }, 5000);
+      }
+
+      prSimBtn.addEventListener('click', () => {
+        prModal.classList.add('show');
+        renderPrPreview();
+      });
+
+      prCloseBtn.addEventListener('click', () => {
+        prModal.classList.remove('show');
+      });
+
+      prModal.addEventListener('click', (e) => {
+        if (e.target === prModal) prModal.classList.remove('show');
+      });
+
+      tabFail.addEventListener('click', () => {
+        currentPrStatus = 'fail';
+        tabFail.className = 'pr-tab active-fail';
+        tabPass.className = 'pr-tab';
+        renderPrPreview();
+      });
+
+      tabPass.addEventListener('click', () => {
+        currentPrStatus = 'pass';
+        tabPass.className = 'pr-tab active-pass';
+        tabFail.className = 'pr-tab';
+        renderPrPreview();
+      });
+
+      btnReroll.addEventListener('click', renderPrPreview);
+      prTitle.addEventListener('input', renderPrPreview);
+
+      btnCopyMsg.addEventListener('click', () => {
+        navigator.clipboard.writeText(prPreview.textContent)
+          .then(() => showToast('✅ Message copied to clipboard!'))
+          .catch(() => showToast('❌ Failed to copy to clipboard', '#ff3b3b'));
+      });
+
+      btnCopyTerminal.addEventListener('click', () => {
+        const rec = prRecipient.value.trim();
+        const recFlag = rec ? ` --recipient "${rec}"` : ' --dry-run';
+        const cmd = `python3 scripts/pr_imessage_notifier.py --status ${currentPrStatus} --pr-title "${prTitle.value.trim()}"${recFlag}`;
+        navigator.clipboard.writeText(cmd)
+          .then(() => showToast('✅ Terminal command copied to clipboard!'))
+          .catch(() => showToast('❌ Failed to copy command', '#ff3b3b'));
+      });
+
+      btnSendImessage.addEventListener('click', async () => {
+        const recipient = prRecipient.value.trim();
+        if (!recipient) {
+          showToast('⚠️ Please enter an iMessage phone number or iCloud email address first!', '#ffd600');
+          return;
+        }
+
+        showToast('⏳ Sending dispatch via local webhook server (localhost:8080)...', '#9da6b8');
+        try {
+          const resp = await fetch('http://localhost:8080/webhook', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              status: currentPrStatus,
+              environment: 'production',
+              pr_number: currentPrStatus === 'fail' ? 404 : 200,
+              pr_title: prTitle.value.trim(),
+              recipient: recipient
+            })
+          });
+          const data = await resp.json();
+          if (resp.ok && data.delivered) {
+            showToast('🚀 iMessage successfully delivered to ' + recipient + '!', '#d6ff00');
+          } else {
+            showToast('⚠️ Webhook responded, but message delivery failed: ' + (data.error || 'Check macOS permissions'), '#ff3b3b');
+          }
+        } catch (err) {
+          showToast('⚠️ Local webhook server is not running on port 8080. Start it with: python3 scripts/webhook_server.py (or use Copy CLI Command)', '#ffd600');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

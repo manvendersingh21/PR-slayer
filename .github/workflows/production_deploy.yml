@@ -1,0 +1,102 @@
+name: Production Deployment & PR Status
+
+on:
+  pull_request:
+    branches: [ main, master, production ]
+    types: [ opened, synchronize, closed ]
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      test_status:
+        description: 'Simulate status (fail or pass)'
+        required: true
+        default: 'fail'
+        type: choice
+        options:
+          - fail
+          - pass
+
+jobs:
+  production-check:
+    name: Production Gatekeeper
+    runs-on: macos-latest  # Or self-hosted macOS runner to send native iMessages directly
+    environment: production
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Example: Your actual build, tests, or deployment steps
+      - name: Run Production Deploy Checks
+        id: deploy
+        run: |
+          echo "Simulating production verification..."
+          if [ "${{ inputs.test_status }}" = "fail" ]; then
+            echo "❌ Simulated production failure!"
+            exit 1
+          fi
+          # Add your real deployment / test commands here
+          echo "✅ Production verification passed!"
+
+      # ============================================================
+      # ❄️ COLD GUY APPROVAL: If PR passes in Production
+      # ============================================================
+      - name: Cold Guy Approval iMessage
+        if: success()
+        env:
+          IMESSAGE_RECIPIENT: ${{ secrets.IMESSAGE_RECIPIENT }}
+          WEBHOOK_URL: ${{ secrets.IMESSAGE_WEBHOOK_URL }}
+        run: |
+          PR_NUM="${{ github.event.pull_request.number || 'N/A' }}"
+          PR_TITLE="${{ github.event.pull_request.title || 'Production Deployment' }}"
+          PR_AUTHOR="${{ github.actor }}"
+
+          # If webhook URL is configured (e.g. your Mac via ngrok/tailscale)
+          if [ -n "$WEBHOOK_URL" ]; then
+            curl -s -X POST "$WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"status\": \"pass\", \"environment\": \"production\", \"pr_number\": \"$PR_NUM\", \"pr_title\": \"$PR_TITLE\", \"author\": \"$PR_AUTHOR\"}"
+          else
+            # Run local AppleScript notifier directly (works on macOS runner / self-hosted)
+            python3 scripts/pr_imessage_notifier.py \
+              --status pass \
+              --env production \
+              --pr-number "$PR_NUM" \
+              --pr-title "$PR_TITLE" \
+              --pr-author "$PR_AUTHOR" \
+              ${IMESSAGE_RECIPIENT:+--recipient "$IMESSAGE_RECIPIENT"} \
+              ${IMESSAGE_RECIPIENT:- --dry-run}
+          fi
+
+      # ============================================================
+      # 🎭 SHAKESPEAREAN MOCKERY: If PR fails in Production
+      # ============================================================
+      - name: Shakespeare Mockery iMessage
+        if: failure()
+        env:
+          IMESSAGE_RECIPIENT: ${{ secrets.IMESSAGE_RECIPIENT }}
+          WEBHOOK_URL: ${{ secrets.IMESSAGE_WEBHOOK_URL }}
+        run: |
+          PR_NUM="${{ github.event.pull_request.number || 'N/A' }}"
+          PR_TITLE="${{ github.event.pull_request.title || 'Production Deployment' }}"
+          PR_AUTHOR="${{ github.actor }}"
+
+          if [ -n "$WEBHOOK_URL" ]; then
+            curl -s -X POST "$WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"status\": \"fail\", \"environment\": \"production\", \"pr_number\": \"$PR_NUM\", \"pr_title\": \"$PR_TITLE\", \"author\": \"$PR_AUTHOR\"}"
+          else
+            python3 scripts/pr_imessage_notifier.py \
+              --status fail \
+              --env production \
+              --pr-number "$PR_NUM" \
+              --pr-title "$PR_TITLE" \
+              --pr-author "$PR_AUTHOR" \
+              ${IMESSAGE_RECIPIENT:+--recipient "$IMESSAGE_RECIPIENT"} \
+              ${IMESSAGE_RECIPIENT:- --dry-run}
+          fi
