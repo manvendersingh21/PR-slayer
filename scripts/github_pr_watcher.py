@@ -266,7 +266,7 @@ def daemon_start(interval=60, recipient=None):
             pass # Stale pid
 
     cmd = [
-        sys.executable, str(Path(__file__).resolve()),
+        sys.executable, "-u", str(Path(__file__).resolve()),
         "--watch",
         "--interval", str(interval)
     ]

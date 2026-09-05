@@ -160,34 +160,38 @@ def send_imessage(recipient: str, message: str) -> bool:
         print(f"Would send to {recipient}:\n---\n{message}\n---")
         return False
 
-    # AppleScript to send iMessage
-    # Escape quotes and backslashes for AppleScript
-    clean_msg = message.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'")
-    
-    applescript = f'''
-    tell application "Messages"
-        set targetRecipient to "{recipient}"
-        set messageText to "{clean_msg}"
-        try
+    applescript = '''
+    on run argv
+        set targetRecipient to item 1 of argv
+        set messageText to item 2 of argv
+        tell application "Messages"
             set targetService to 1st service whose service type = iMessage
-            set targetBuddy to buddy targetRecipient of targetService
-            send messageText to targetBuddy
-            return "SUCCESS"
-        on error errStr
             try
-                set targetBuddy to participant targetRecipient
+                set targetBuddy to buddy targetRecipient of targetService
                 send messageText to targetBuddy
-                return "SUCCESS_PARTICIPANT"
-            on error errStr2
-                error "Failed to send iMessage: " & errStr & " / " & errStr2
+                return "SUCCESS"
+            on error err1
+                try
+                    set targetBuddy to participant targetRecipient of targetService
+                    send messageText to targetBuddy
+                    return "SUCCESS_PARTICIPANT"
+                on error err2
+                    try
+                        send messageText to buddy targetRecipient
+                        return "SUCCESS_DIRECT"
+                    on error err3
+                        error "Messages Error: " & err1 & " | " & err2 & " | " & err3
+                    end try
+                end try
             end try
-        end try
-    end tell
+        end tell
+    end run
     '''
-    
+
     try:
         res = subprocess.run(
-            ["osascript", "-e", applescript],
+            ["osascript", "-", recipient, message],
+            input=applescript,
             capture_output=True,
             text=True,
             check=True
