@@ -18,6 +18,17 @@ The result: **autonomous code generation with production-grade safety**.
 
 ## Quick Start
 
+**Terminal Demo (Fastest for hackathon):**
+
+```bash
+cd agentgate
+python3 scripts/simple_demo.py
+```
+
+Shows the complete safety loop with visual output in 10 seconds.
+
+**Dashboard Demo (Interactive):**
+
 ```bash
 cd agentgate
 make demo
@@ -25,7 +36,7 @@ make demo
 
 Open http://localhost:8000 and click "Start Demo"
 
-The offline demo runs end-to-end with no API keys needed.
+Both demos run offline with no API keys needed.
 
 ## 2-Minute Demo Script
 
