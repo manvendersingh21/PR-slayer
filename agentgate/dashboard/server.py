@@ -19,8 +19,17 @@ app = FastAPI()
 event_queue = Queue()
 
 # Current run state
+def _startup_mode() -> str:
+    """Match create_adapters before the loop runs, so the badge is right at page load."""
+    if os.getenv("GITHUB_TOKEN"):
+        return "live"
+    if os.getenv("JEV_API_KEY") or os.getenv("TYPESAFE_API_KEY"):
+        return "hybrid"
+    return "offline"
+
+
 current_state = {
-    "mode": "offline",
+    "mode": _startup_mode(),
     "pr_number": 0,
     "status": "idle",
     "events": []
@@ -146,12 +155,14 @@ def run_demo_loop():
     except Exception as exc:
         current_state["status"] = "failed"
         current_state["result"] = {"success": False, "error": str(exc)}
-        event_queue.put({
+        failed = {
             "type": "loop_failed",
             "pr_number": current_state.get("pr_number", 0),
             "data": {"error": str(exc)},
             "timestamp": "",
-        })
+        }
+        event_queue.put(failed)
+        current_state["events"].append(failed)
         return
 
     current_state["status"] = "complete" if result["success"] else "failed"
