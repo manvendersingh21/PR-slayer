@@ -309,7 +309,7 @@ MIT
 
 ## Credits
 
-Built for the [Hackathon Name] by [Your Name]
+Built for JEVATHON.
 
 - **Jev**: TypeSafe AI's decision API - https://thejevai.com
 - **CodeRabbit**: AI code reviewer - https://coderabbit.ai

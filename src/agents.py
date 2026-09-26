@@ -156,12 +156,18 @@ class FixerAgent:
     def _fix_with_coding_agent(self, github, pr_number: int, findings_count: int) -> Dict[str, Any]:
         """Ask the CodeRabbit Coding Agent to autofix this pull request."""
         before = set(github.list_commit_shas(pr_number))
-        github.add_comment(
+        posted = github.add_comment(
             pr_number,
             "@coderabbitai autofix\n\n"
             "Please fix every open CodeRabbit finding on this pull request, "
             "especially the missing refund authorization check."
         )
+        if posted is False:
+            return {
+                "success": False,
+                "message": "Could not ask the Coding Agent to autofix (GitHub comment was forbidden)",
+                "agent": "coderabbit-coding-agent"
+            }
         print(f"[Fixer] Posted @coderabbitai autofix on PR #{pr_number}")
 
         deadline = time.time() + 180

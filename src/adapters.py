@@ -91,6 +91,17 @@ class LiveGitHubAdapter(GitHubAdapter):
             "base": "main"
         }
         response = requests.post(url, headers=self.headers, json=data)
+        if response.status_code == 403:
+            owner = self.repo.split("/")[0]
+            existing = requests.get(
+                url,
+                headers=self.headers,
+                params={"state": "open", "head": f"{owner}:{branch}"},
+            )
+            existing.raise_for_status()
+            pulls = existing.json()
+            if pulls:
+                return pulls[0]["number"]
         response.raise_for_status()
         return response.json()["number"]
     
@@ -108,11 +119,15 @@ class LiveGitHubAdapter(GitHubAdapter):
         response = requests.put(url, headers=self.headers)
         response.raise_for_status()
     
-    def add_comment(self, pr_number: int, comment: str):
-        """Add comment to PR"""
+    def add_comment(self, pr_number: int, comment: str) -> bool:
+        """Add comment to PR. Returns False when this token cannot comment."""
         url = f"{self.base_url}/repos/{self.repo}/issues/{pr_number}/comments"
         response = requests.post(url, headers=self.headers, json={"body": comment})
+        if response.status_code == 403:
+            print("[GitHub] Cannot comment with this token (403)")
+            return False
         response.raise_for_status()
+        return True
 
     def list_commit_shas(self, pr_number: int) -> list:
         """Commit SHAs currently on the pull request."""
@@ -208,7 +223,7 @@ class LiveCodeRabbitAdapter(CodeRabbitAdapter):
         }
         self.base_url = "https://api.github.com"
     
-    def get_review(self, pr_number: int, timeout: int = 120) -> List[Finding]:
+    def get_review(self, pr_number: int, timeout: int = 300) -> List[Finding]:
         """Poll for CodeRabbit review comments"""
         print(f"[LiveCodeRabbit] Polling for review on PR #{pr_number}...")
         
@@ -452,9 +467,6 @@ class LiveJevAdapter(JevAdapter):
             noul = merge_safe_data.get("noul", 0.5)
             merge_safe = noul >= 0.5
             
-            # Confidence: noul*100 when yes, (1-noul)*100 when no
-            confidence = noul * 100 if merge_safe else (1 - noul) * 100
-            
             # Parse risk (score with legend)
             risk_data = answers.get("risk", {})
             risk_score = risk_data.get("score", 2.5)
@@ -491,7 +503,7 @@ class LiveJevAdapter(JevAdapter):
         except requests.exceptions.RequestException as e:
             self.available = False
             self.last_error = f"Network error: {e}"
-            print(f"[Jev] ❌ Unavailable: {self.last_error}")
+            print(f"[Jev] Jev unavailable: {self.last_error}")
             print("[Jev] Falling back to stub decision")
             stub = StubJevAdapter()
             return stub.decide(pr_state)
@@ -499,7 +511,7 @@ class LiveJevAdapter(JevAdapter):
         except (ValueError, KeyError, json.JSONDecodeError) as e:
             self.available = False
             self.last_error = f"Parse error: {e}"
-            print(f"[Jev] ❌ Schema mismatch: {self.last_error}")
+            print(f"[Jev] Jev unavailable: {self.last_error}")
             print("[Jev] Falling back to stub decision")
             stub = StubJevAdapter()
             return stub.decide(pr_state)
@@ -507,7 +519,7 @@ class LiveJevAdapter(JevAdapter):
         except Exception as e:
             self.available = False
             self.last_error = str(e)
-            print(f"[Jev] ❌ Unexpected error: {self.last_error}")
+            print(f"[Jev] Jev unavailable: {self.last_error}")
             print("[Jev] Falling back to stub decision")
             stub = StubJevAdapter()
             return stub.decide(pr_state)

@@ -20,7 +20,7 @@ event_queue = Queue()
 
 # Current run state
 current_state = {
-    "mode": "offline",
+    "mode": "live" if os.getenv("GITHUB_TOKEN") else "offline",
     "pr_number": 0,
     "status": "idle",
     "events": []
@@ -141,8 +141,19 @@ def run_demo_loop():
     issue = "Create a refund endpoint"
     branch = "agentgate/add-refund-endpoint"
     
-    result = orchestrator.run_loop(issue, branch)
-    
+    try:
+        result = orchestrator.run_loop(issue, branch)
+    except Exception as exc:
+        current_state["status"] = "failed"
+        current_state["result"] = {"success": False, "error": str(exc)}
+        event_queue.put({
+            "type": "loop_failed",
+            "pr_number": current_state.get("pr_number", 0),
+            "data": {"error": str(exc)},
+            "timestamp": "",
+        })
+        return
+
     current_state["status"] = "complete" if result["success"] else "failed"
     current_state["result"] = result
 
