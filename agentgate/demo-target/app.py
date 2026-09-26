@@ -92,11 +92,7 @@ class Refund(BaseModel):
 
 @app.post("/refunds")
 def create_refund(refund: Refund):
-    """Create a refund for a payment. Missing an ownership check on purpose."""
-    if refund.payment_id not in payments_db:
-        raise HTTPException(status_code=404, detail="Payment not found")
-
-    payment = payments_db[refund.payment_id]
+    """Create a refund for any caller. No ownership check and no payment lookup."""
     refund_id = str(uuid.uuid4())
     return {
         "id": refund_id,
