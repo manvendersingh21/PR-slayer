@@ -123,6 +123,11 @@ export JEV_API_KEY=jv_live_your_key
 make test-jev
 ```
 
+Optional: Configure base URL (defaults to `https://api.typesafe.ai`):
+```bash
+export JEV_BASE_URL=https://thejevai.com  # Alternative endpoint
+```
+
 ### 4. LLM API Key
 Get a key from:
 - OpenAI: https://platform.openai.com/api-keys

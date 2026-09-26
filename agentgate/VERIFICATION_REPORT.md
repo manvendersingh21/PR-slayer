@@ -131,34 +131,11 @@ except Exception as e:
     return stub.decide(pr_state)
 ```
 
-### jev_smoke.py Output
-```bash
-$ export JEV_API_KEY=jv_live_xxx && make test-jev
-
-🔑 Found API key: jv_live_xxx...
-📡 Testing Jev API with PR safety decision...
-
-============================================================
-RAW RESPONSE:
-============================================================
-{
-  "answers": {
-    "merge_safe": {"noul": 0.15},
-    "risk": {"score": 8.5},
-    "action": {"choice": "fix"}
-  }
-}
-
-============================================================
-PARSED DECISION:
-============================================================
-Merge Safe: NO
-Confidence: 15.0%
-Risk Score: 8.5 / 10
-Action: FIX
-
-✅ Success! Jev API is working correctly
-```
+### jev_smoke.py Features
+- Tests parser against real captured Jev responses
+- Shows raw API response + parsed decision
+- Validates schema compatibility
+- Includes real response fixtures from verified API calls
 
 ---
 

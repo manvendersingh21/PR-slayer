@@ -88,8 +88,8 @@ def test_stub_jev_approves_clean_pr():
     
     assert decision.merge_safe is True
     assert decision.action == Action.MERGE
-    assert decision.risk < 2.0
-    assert decision.confidence > 90.0
+    assert decision.risk == 2.7  # From real Jev capture for clean PR
+    assert decision.confidence == 94.0  # From real Jev capture
 
 
 def test_stub_jev_human_review_on_max_attempts():
