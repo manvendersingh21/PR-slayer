@@ -4,8 +4,10 @@ Each adapter has offline/hybrid/live modes based on env vars.
 """
 import os
 import json
+import re
 import time
 import subprocess
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 from abc import ABC, abstractmethod
 import requests
@@ -112,6 +114,13 @@ class LiveGitHubAdapter(GitHubAdapter):
         response = requests.post(url, headers=self.headers, json={"body": comment})
         response.raise_for_status()
 
+    def list_commit_shas(self, pr_number: int) -> list:
+        """Commit SHAs currently on the pull request."""
+        url = f"{self.base_url}/repos/{self.repo}/pulls/{pr_number}/commits"
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        return [commit.get("sha") for commit in response.json() if commit.get("sha")]
+
 
 class CodeRabbitAdapter(ABC):
     """Abstract CodeRabbit interface"""
@@ -167,6 +176,25 @@ class CannedCodeRabbitAdapter(CodeRabbitAdapter):
         print(f"[CannedCodeRabbit] Simulated review request for PR #{pr_number}")
 
 
+def _coderabbit_message(body: str) -> str:
+    """Pull the finding title and explanation out of a CodeRabbit comment."""
+    text = re.sub(r"<!--.*?-->", " ", body, flags=re.S)
+    text = re.sub(r"<details>.*?</details>", " ", text, flags=re.S)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = text.replace("**", "")
+    lines = []
+    for raw in text.splitlines():
+        line = re.sub(r"\s+", " ", raw).strip(" |_")
+        if not line or line.startswith("http") or "Script executed" in line:
+            continue
+        if line.startswith("_") or "Prompt for AI" in line or "Analysis chain" in line:
+            continue
+        lines.append(line)
+    if not lines:
+        return ""
+    return " ".join(lines[:4])[:500]
+
+
 class LiveCodeRabbitAdapter(CodeRabbitAdapter):
     """Live mode: polls GitHub for CodeRabbit bot comments"""
     
@@ -202,7 +230,9 @@ class LiveCodeRabbitAdapter(CodeRabbitAdapter):
         
         findings = []
         for comment in response.json():
-            # Look for coderabbitai[bot] comments
+            # Top-level review notes only. Replies are commands such as autofix.
+            if comment.get("in_reply_to_id"):
+                continue
             if comment.get("user", {}).get("login") == "coderabbitai[bot]":
                 finding = self._parse_comment(comment)
                 if finding:
@@ -211,22 +241,32 @@ class LiveCodeRabbitAdapter(CodeRabbitAdapter):
         return findings
     
     def _parse_comment(self, comment: dict) -> Optional[Finding]:
-        """Parse a single CodeRabbit comment"""
+        """Parse a CodeRabbit inline comment from a real review."""
         body = comment.get("body", "")
-        
-        # Simple severity detection
-        severity = Severity.SUGGESTION
-        if any(word in body.lower() for word in ["critical", "security", "vulnerability"]):
+        if not body or body.strip().startswith("@coderabbit"):
+            return None
+
+        message = _coderabbit_message(body)
+        if not message:
+            return None
+
+        low = body.lower()
+        if any(word in low for word in ("critical", "idor", "cwe-639", "vulnerability")):
             severity = Severity.CRITICAL
-        elif "security" in body.lower():
+        elif "major" in low or "security" in low:
             severity = Severity.SECURITY
-        
+        elif "minor" in low:
+            severity = Severity.MAINTAINABILITY
+        else:
+            severity = Severity.SUGGESTION
+
+        category = "security" if severity == Severity.CRITICAL else "review"
         return Finding(
             severity=severity,
-            category="review",
+            category=category,
             file=comment.get("path", "unknown"),
-            line=comment.get("line", 0),
-            message=body[:200],  # Truncate for brevity
+            line=comment.get("line") or 0,
+            message=message,
             suggested_fix=None
         )
     
@@ -253,27 +293,62 @@ class StubJevAdapter(JevAdapter):
         tests_pass = pr_state.get("tests_pass", True)
         attempt = pr_state.get("attempt", 1)
         
-        # Always block on critical findings
-        critical_count = sum(1 for f in findings if f["severity"] == "critical")
+        # Block on critical and security findings. CodeRabbit labels an auth bypass
+        # "Minor" and an over-refund "Major"; both must stop a merge.
+        critical_count = sum(1 for f in findings if f["severity"] in ("critical", "security"))
         
         if critical_count > 0 or not tests_pass:
-            # From real Jev response for buggy PR:
-            # noul=0.02, score=3.96 → 9.9/10, action=fix, confidence=0.93
+            # Stub (from recorded Jev response) for the buggy PR:
+            # noul=0.02, score=3.96 → 9.9/10, choice=fix, confidence=0.93
+            action = Action.FIX if attempt < 3 else Action.HUMAN_REVIEW
             return JevDecision(
                 merge_safe=False,
-                confidence=93.0,  # Stub (from recorded Jev response)
-                risk=9.9,  # Stub (from recorded Jev response: 3.96/4*10)
-                action=Action.FIX if attempt < 3 else Action.HUMAN_REVIEW
+                confidence=93.0,
+                risk=9.9,
+                action=action,
+                raw_response={
+                    "source": "stub (from recorded Jev response)",
+                    "answers": {
+                        "merge_safe": {"type": "noul", "noul": 0.02},
+                        "action": {
+                            "type": "choice",
+                            "choice": action.value,
+                            "confidence": 0.93,
+                            "probabilities": {
+                                "fix": 0.95,
+                                "merge": 0.0,
+                                "reject": 0.0,
+                                "human_review": 0.05,
+                            },
+                        },
+                    },
+                },
             )
         
-        # Clean PR
-        # From real Jev response for fixed PR:
-        # noul=0.84, score=1.08 → 2.7/10, action=merge, confidence=0.94
+        # Stub (from recorded Jev response) for the fixed PR:
+        # noul=0.84, score=1.08 → 2.7/10, choice=merge, confidence=0.94
         return JevDecision(
             merge_safe=True,
-            confidence=94.0,  # Stub (from recorded Jev response)
-            risk=2.7,  # Stub (from recorded Jev response: 1.08/4*10)
-            action=Action.MERGE
+            confidence=94.0,
+            risk=2.7,
+            action=Action.MERGE,
+            raw_response={
+                "source": "stub (from recorded Jev response)",
+                "answers": {
+                    "merge_safe": {"type": "noul", "noul": 0.84},
+                    "action": {
+                        "type": "choice",
+                        "choice": "merge",
+                        "confidence": 0.94,
+                        "probabilities": {
+                            "merge": 0.96,
+                            "human_review": 0.04,
+                            "fix": 0.0,
+                            "reject": 0.0,
+                        },
+                    },
+                },
+            },
         )
 
 
@@ -447,42 +522,44 @@ class LLMAdapter(ABC):
         pass
 
 
-class CannedLLMAdapter(LLMAdapter):
-    """Offline mode: canned buggy code"""
-    
-    def generate_code(self, prompt: str) -> str:
-        """Return buggy refund implementation"""
-        if "refund" in prompt.lower():
-            # Intentionally buggy: missing auth check
-            return '''
-@app.post("/refunds")
-def create_refund(refund: Refund):
-    """Create a refund for a payment"""
-    if refund.payment_id not in payments_db:
-        raise HTTPException(status_code=404, detail="Payment not found")
-    
-    payment = payments_db[refund.payment_id]
-    
-    # BUG: Missing authorization check! Should verify user owns the order
-    
-    refund_id = str(uuid.uuid4())
-    refund_data = {
-        "id": refund_id,
-        "payment_id": refund.payment_id,
-        "amount": refund.amount,
-        "status": "completed",
-        "created_at": datetime.utcnow().isoformat()
-    }
-    
-    return refund_data
-
-
+BUGGY_REFUND = '''
 class Refund(BaseModel):
     payment_id: str
     amount: float
     user_id: str
+
+
+@app.post("/refunds")
+def create_refund(refund: Refund):
+    """Create a refund for a payment. Missing an ownership check on purpose."""
+    if refund.payment_id not in payments_db:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    payment = payments_db[refund.payment_id]
+    refund_id = str(uuid.uuid4())
+    return {
+        "id": refund_id,
+        "payment_id": refund.payment_id,
+        "amount": refund.amount,
+        "user_id": refund.user_id,
+        "status": "completed",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
 '''
-        return "# Code generation not implemented"
+
+
+class CannedLLMAdapter(LLMAdapter):
+    """Offline stand-in. First call ships the bug. Later calls apply the recorded fix."""
+
+    def __init__(self):
+        self.call_count = 0
+
+    def generate_code(self, prompt: str) -> str:
+        self.call_count += 1
+        if self.call_count == 1:
+            return BUGGY_REFUND
+        fixed = Path(__file__).resolve().parents[1] / "demo-target" / "fixed_app.py"
+        return fixed.read_text()
 
 
 class LiveLLMAdapter(LLMAdapter):

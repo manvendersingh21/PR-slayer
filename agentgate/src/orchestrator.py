@@ -94,11 +94,18 @@ class Orchestrator:
             decision = self.jev.decide(jev_input)
             pr_state.decision = decision
             
+            answers = (decision.raw_response or {}).get("answers", {})
+            action_answer = answers.get("action", {}) if isinstance(answers, dict) else {}
             self._emit_event("decision_complete", pr_number, {
                 "merge_safe": decision.merge_safe,
                 "confidence": decision.confidence,
                 "risk": decision.risk,
-                "action": decision.action.value
+                "action": decision.action.value,
+                "noul": (answers.get("merge_safe") or {}).get("noul"),
+                "probabilities": action_answer.get("probabilities") or {},
+                "source": (decision.raw_response or {}).get("source")
+                    or (decision.raw_response or {}).get("model")
+                    or "jev",
             })
             
             # Handle decision
@@ -128,7 +135,9 @@ class Orchestrator:
                 fix_result = self.fixer.fix(
                     [self._finding_to_dict(f) for f in findings],
                     diff,
-                    branch
+                    branch,
+                    pr_number=pr_number,
+                    github=self.github if hasattr(self.github, "list_commit_shas") else None
                 )
                 
                 self._emit_event("fix_complete", pr_number, fix_result)

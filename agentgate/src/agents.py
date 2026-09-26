@@ -3,6 +3,7 @@ Builder and Fixer agents for AgentGate
 """
 import os
 import subprocess
+import time
 from typing import Dict, Any
 from .adapters import LLMAdapter, GitHubAdapter
 
@@ -77,19 +78,21 @@ Respond with Python code only, no explanation.
 """
     
     def _checkout_branch(self, branch: str):
-        """Create and checkout branch"""
+        """Create or reset the demo branch from the current commit."""
         subprocess.run(
-            ["git", "checkout", "-b", branch],
+            ["git", "checkout", "-B", branch],
             cwd=self.repo_path,
             capture_output=True
         )
     
     def _apply_code(self, code: str):
-        """Apply generated code to the demo target"""
+        """Start from the clean seed, then append the generated refund code."""
+        seed_path = os.path.join(self.repo_path, "agentgate/demo-target/seed_app.py")
         app_path = os.path.join(self.repo_path, "agentgate/demo-target/app.py")
-        
-        # Append code to app.py
-        with open(app_path, "a") as f:
+        with open(seed_path, "r") as f:
+            base = f.read()
+        with open(app_path, "w") as f:
+            f.write(base)
             f.write("\n\n")
             f.write(code)
         
@@ -98,7 +101,7 @@ Respond with Python code only, no explanation.
     def _commit_and_push(self, branch: str, message: str):
         """Commit and push changes"""
         subprocess.run(
-            ["git", "add", "."],
+            ["git", "add", "agentgate/demo-target/app.py"],
             cwd=self.repo_path,
             capture_output=True
         )
@@ -122,12 +125,17 @@ class FixerAgent:
         self.llm = llm
         self.repo_path = repo_path
     
-    def fix(self, findings: list, diff: str, branch: str) -> Dict[str, Any]:
+    def fix(self, findings: list, diff: str, branch: str, pr_number: int = None, github=None) -> Dict[str, Any]:
         """
-        Fix code based on findings
+        Fix code based on findings.
+        Live GitHub runs the CodeRabbit Coding Agent via `@coderabbitai autofix`.
+        Offline mode applies the local stand-in patch.
         Returns: {success: bool, message: str}
         """
         print(f"[Fixer] Starting fix for {len(findings)} findings")
+
+        if github is not None and pr_number and hasattr(github, "list_commit_shas"):
+            return self._fix_with_coding_agent(github, pr_number, len(findings))
         
         # Generate fix
         prompt = self._create_fix_prompt(findings, diff)
@@ -141,7 +149,38 @@ class FixerAgent:
         
         return {
             "success": True,
-            "message": f"Fixed {len(findings)} findings"
+            "message": f"Fixed {len(findings)} findings",
+            "agent": "offline-stand-in"
+        }
+
+    def _fix_with_coding_agent(self, github, pr_number: int, findings_count: int) -> Dict[str, Any]:
+        """Ask the CodeRabbit Coding Agent to autofix this pull request."""
+        before = set(github.list_commit_shas(pr_number))
+        github.add_comment(
+            pr_number,
+            "@coderabbitai autofix\n\n"
+            "Please fix every open CodeRabbit finding on this pull request, "
+            "especially the missing refund authorization check."
+        )
+        print(f"[Fixer] Posted @coderabbitai autofix on PR #{pr_number}")
+
+        deadline = time.time() + 180
+        while time.time() < deadline:
+            time.sleep(10)
+            after = set(github.list_commit_shas(pr_number))
+            if after - before:
+                print("[Fixer] CodeRabbit Coding Agent pushed a commit")
+                return {
+                    "success": True,
+                    "message": "CodeRabbit Coding Agent pushed a fix",
+                    "agent": "coderabbit-coding-agent"
+                }
+
+        print("[Fixer] Coding Agent did not push within 180s")
+        return {
+            "success": False,
+            "message": "CodeRabbit Coding Agent did not push a commit in time",
+            "agent": "coderabbit-coding-agent"
         }
     
     def _create_fix_prompt(self, findings: list, diff: str) -> str:
@@ -189,7 +228,7 @@ Respond with Python code only, no explanation.
     def _commit_and_push(self, branch: str, message: str):
         """Commit and push changes"""
         subprocess.run(
-            ["git", "add", "."],
+            ["git", "add", "agentgate/demo-target/app.py"],
             cwd=self.repo_path,
             capture_output=True
         )
