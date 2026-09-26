@@ -6,6 +6,7 @@ import os
 import json
 import time
 import subprocess
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 from abc import ABC, abstractmethod
 import requests
@@ -488,42 +489,44 @@ class LLMAdapter(ABC):
         pass
 
 
-class CannedLLMAdapter(LLMAdapter):
-    """Offline mode: canned buggy code"""
-    
-    def generate_code(self, prompt: str) -> str:
-        """Return buggy refund implementation"""
-        if "refund" in prompt.lower():
-            # Intentionally buggy: missing auth check
-            return '''
-@app.post("/refunds")
-def create_refund(refund: Refund):
-    """Create a refund for a payment"""
-    if refund.payment_id not in payments_db:
-        raise HTTPException(status_code=404, detail="Payment not found")
-    
-    payment = payments_db[refund.payment_id]
-    
-    # BUG: Missing authorization check! Should verify user owns the order
-    
-    refund_id = str(uuid.uuid4())
-    refund_data = {
-        "id": refund_id,
-        "payment_id": refund.payment_id,
-        "amount": refund.amount,
-        "status": "completed",
-        "created_at": datetime.utcnow().isoformat()
-    }
-    
-    return refund_data
-
-
+BUGGY_REFUND = '''
 class Refund(BaseModel):
     payment_id: str
     amount: float
     user_id: str
+
+
+@app.post("/refunds")
+def create_refund(refund: Refund):
+    """Create a refund for a payment. Missing an ownership check on purpose."""
+    if refund.payment_id not in payments_db:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    payment = payments_db[refund.payment_id]
+    refund_id = str(uuid.uuid4())
+    return {
+        "id": refund_id,
+        "payment_id": refund.payment_id,
+        "amount": refund.amount,
+        "user_id": refund.user_id,
+        "status": "completed",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
 '''
-        return "# Code generation not implemented"
+
+
+class CannedLLMAdapter(LLMAdapter):
+    """Offline stand-in. First call ships the bug. Later calls apply the recorded fix."""
+
+    def __init__(self):
+        self.call_count = 0
+
+    def generate_code(self, prompt: str) -> str:
+        self.call_count += 1
+        if self.call_count == 1:
+            return BUGGY_REFUND
+        fixed = Path(__file__).resolve().parents[1] / "demo-target" / "fixed_app.py"
+        return fixed.read_text()
 
 
 class LiveLLMAdapter(LLMAdapter):

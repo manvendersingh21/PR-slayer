@@ -288,244 +288,109 @@
     
     <script>
         let eventSource = null;
-        let currentState = {
-            stages: {
-                builder: { status: 'pending', data: {} },
-                tests: { status: 'pending', data: {} },
-                review: { status: 'pending', data: {} },
-                decision: { status: 'pending', data: {} },
-                fix: { status: 'pending', data: {} },
-                merge: { status: 'pending', data: {} }
-            }
-        };
-        
-        // Load initial state
+        let rows = [];
+
         fetch('/api/state')
             .then(r => r.json())
             .then(state => {
-                document.getElementById('modeBadge').textContent = 
+                document.getElementById('modeBadge').textContent =
                     `Mode: ${state.mode.toUpperCase()}`;
             });
-        
+
         function startDemo() {
             const button = document.getElementById('startButton');
             button.disabled = true;
             button.textContent = 'Running...';
-            
+            rows = [];
             document.getElementById('content').classList.remove('hidden');
-            
-            // Start SSE
+            document.getElementById('pipeline').innerHTML = '';
+            if (eventSource) eventSource.close();
             eventSource = new EventSource('/api/events');
             eventSource.onmessage = handleEvent;
-            
-            // Trigger demo
             fetch('/api/start', { method: 'POST' });
         }
-        
+
         function handleEvent(e) {
             const event = JSON.parse(e.data);
-            console.log('Event:', event);
-            
-            // Update PR title
             if (event.pr_number > 0) {
-                document.getElementById('prTitle').textContent = 
+                document.getElementById('prTitle').textContent =
                     `PR #${event.pr_number} — Add refund endpoint`;
             }
-            
-            // Update stages based on event type
-            switch(event.type) {
-                case 'builder_start':
-                    updateStage('builder', 'active', { message: 'Building code...' });
-                    break;
-                case 'builder_complete':
-                    updateStage('builder', 'success', { message: '✅ Complete' });
-                    break;
-                case 'tests_start':
-                    updateStage('tests', 'active', { message: 'Running tests...' });
-                    break;
-                case 'tests_complete':
-                    const testStatus = event.data.passed ? 'success' : 'error';
-                    updateStage('tests', testStatus, {
-                        message: event.data.passed ? '✅ All tests pass' : '❌ Tests failed'
-                    });
-                    break;
-                case 'review_start':
-                    updateStage('review', 'active', { message: 'CodeRabbit reviewing...' });
-                    break;
-                case 'review_complete':
-                    const reviewStatus = event.data.critical_count > 0 ? 'error' : 'success';
-                    updateStage('review', reviewStatus, {
-                        findings_count: event.data.findings_count,
-                        critical_count: event.data.critical_count,
-                        findings: event.data.findings
-                    });
-                    break;
-                case 'decision_start':
-                    updateStage('decision', 'active', { message: 'Jev analyzing...' });
-                    break;
-                case 'decision_complete':
-                    updateStage('decision', 'success', {
-                        merge_safe: event.data.merge_safe,
-                        confidence: event.data.confidence,
-                        risk: event.data.risk,
-                        action: event.data.action
-                    });
-                    break;
-                case 'fix_start':
-                    updateStage('fix', 'active', { message: 'Agent fixing code...' });
-                    break;
-                case 'fix_complete':
-                    updateStage('fix', 'success', { message: '✅ Fix applied' });
-                    // Reset review and decision for next iteration
-                    updateStage('review', 'pending', {});
-                    updateStage('decision', 'pending', {});
-                    break;
-                case 'merge_complete':
-                    updateStage('merge', 'success', { message: '✅ PR MERGED' });
-                    document.getElementById('startButton').textContent = 'Demo Complete!';
-                    break;
+            if (event.type === 'builder_complete') {
+                rows.push({ title: 'Builder', status: 'success', html: '✅ Complete' });
+            } else if (event.type === 'review_complete') {
+                rows.push({
+                    title: 'CodeRabbit',
+                    status: event.data.critical_count > 0 ? 'error' : 'success',
+                    html: reviewHtml(event.data)
+                });
+            } else if (event.type === 'decision_complete') {
+                rows.push({
+                    title: 'Jev',
+                    status: event.data.action === 'merge' ? 'success' : 'error',
+                    html: decisionHtml(event.data)
+                });
+            } else if (event.type === 'fix_complete') {
+                const live = event.data.agent === 'coderabbit-coding-agent';
+                rows.push({
+                    title: live ? 'CodeRabbit Coding Agent' : 'Fixer',
+                    status: event.data.success === false ? 'error' : 'success',
+                    html: live
+                        ? '✅ @coderabbitai autofix pushed a commit'
+                        : '✅ Offline stand-in applied the recorded fix. Live mode posts @coderabbitai autofix.'
+                });
+            } else if (event.type === 'merge_complete') {
+                rows.push({ title: 'Merge', status: 'success', html: '✅ PR MERGED' });
+                document.getElementById('startButton').textContent = 'Demo Complete!';
+            } else {
+                return;
             }
-            
-            renderPipeline();
+            renderRows();
         }
-        
-        function updateStage(stage, status, data) {
-            currentState.stages[stage] = { status, data };
+
+        function reviewHtml(data) {
+            const critical = data.critical_count || 0;
+            if (!critical) return '<span class="metric success">🟢 Clean</span>';
+            const finding = (data.findings || []).find(f => f.severity === 'critical');
+            const text = finding ? `<div class="finding"><span class="finding-severity severity-critical">CRITICAL</span> ${finding.message}</div>` : '';
+            return `<span class="metric critical">🔴 ${critical} Critical Issue</span>${text}`;
         }
-        
-        function renderPipeline() {
+
+        function decisionHtml(data) {
+            const probs = data.probabilities || {};
+            const bars = Object.entries(probs).sort((a, b) => b[1] - a[1]).map(([name, p]) => `
+                <div class="prob-row">
+                    <span>${name}</span>
+                    <div class="prob-track"><div class="prob-fill" style="width:${(p * 100).toFixed(0)}%"></div></div>
+                    <span>${(p * 100).toFixed(0)}%</span>
+                </div>`).join('');
+            const source = data.source ? `<div class="source-label">${data.source}</div>` : '';
+            return `
+                <span class="metric">Decision: <strong>${String(data.action).toUpperCase()}</strong></span>
+                <span class="metric">Confidence: ${Number(data.confidence).toFixed(1)}%</span>
+                <div class="risk-meter">
+                    <div class="risk-label"><span>Jev Risk</span><span>${Number(data.risk).toFixed(1)} / 10</span></div>
+                    <div class="risk-bar"><div class="risk-fill" style="width:${Math.min(data.risk * 10, 100)}%">${Number(data.risk).toFixed(1)}</div></div>
+                </div>
+                ${bars ? `<details open class="probs"><summary>Jev action probabilities</summary>${bars}</details>` : ''}
+                ${source}`;
+        }
+
+        function renderRows() {
             const pipeline = document.getElementById('pipeline');
             pipeline.innerHTML = '';
-            
-            // Builder
-            pipeline.appendChild(createStageElement(
-                'Builder',
-                currentState.stages.builder
-            ));
-            
-            // Tests
-            pipeline.appendChild(createStageElement(
-                'Tests',
-                currentState.stages.tests
-            ));
-            
-            // CodeRabbit Review
-            const reviewStage = currentState.stages.review;
-            const reviewEl = createStageElement('CodeRabbit Review', reviewStage);
-            
-            if (reviewStage.status === 'success' || reviewStage.status === 'error') {
-                const details = reviewEl.querySelector('.stage-details');
-                
-                const critical = reviewStage.data.critical_count || 0;
-                const total = reviewStage.data.findings_count || 0;
-                
-                if (critical > 0) {
-                    details.innerHTML = `
-                        <span class="metric critical">🔴 ${critical} Critical Issue${critical > 1 ? 's' : ''}</span>
-                        <span class="metric">${total} Total Findings</span>
-                    `;
-                    
-                    // Show findings
-                    if (reviewStage.data.findings && reviewStage.data.findings.length > 0) {
-                        const panel = document.createElement('div');
-                        panel.className = 'findings-panel';
-                        
-                        reviewStage.data.findings.forEach(f => {
-                            if (f.severity === 'critical') {
-                                panel.innerHTML += `
-                                    <div class="finding">
-                                        <span class="finding-severity severity-critical">CRITICAL</span>
-                                        <strong>${f.file}:${f.line}</strong><br>
-                                        ${f.message}
-                                    </div>
-                                `;
-                            }
-                        });
-                        
-                        details.appendChild(panel);
-                    }
-                } else {
-                    details.innerHTML = '<span class="metric success">🟢 Clean</span>';
-                }
-            }
-            
-            pipeline.appendChild(reviewEl);
-            
-            // Jev Decision
-            const decisionStage = currentState.stages.decision;
-            const decisionEl = createStageElement('Jev Decision', decisionStage);
-            
-            if (decisionStage.status === 'success') {
-                const details = decisionEl.querySelector('.stage-details');
-                const data = decisionStage.data;
-                
-                const probs = data.probabilities || {};
-                const probRows = Object.entries(probs)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([name, p]) => `
-                        <div class="prob-row">
-                            <span>${name}</span>
-                            <div class="prob-track"><div class="prob-fill" style="width:${(p * 100).toFixed(0)}%"></div></div>
-                            <span>${(p * 100).toFixed(0)}%</span>
-                        </div>
-                    `).join("");
-                const source = data.source ? `<div class="source-label">${data.source}</div>` : "";
-                details.innerHTML = `
-                    <span class="metric">Action: <strong>${data.action.toUpperCase()}</strong></span>
-                    <span class="metric">Confidence: ${data.confidence.toFixed(1)}%</span>
-                    <div class="risk-meter">
-                        <div class="risk-label">
-                            <span>Risk Score</span>
-                            <span>${data.risk.toFixed(1)} / 10</span>
-                        </div>
-                        <div class="risk-bar">
-                            <div class="risk-fill" style="width: ${Math.min(data.risk * 10, 100)}%">
-                                ${data.risk.toFixed(1)}
-                            </div>
-                        </div>
+            rows.forEach(row => {
+                const div = document.createElement('div');
+                div.className = `stage ${row.status}`;
+                const icon = row.status === 'success' ? '✅' : '🔴';
+                div.innerHTML = `
+                    <div class="stage-header">
+                        <div class="stage-title">${row.title}</div>
+                        <div class="stage-status">${icon}</div>
                     </div>
-                    ${probRows ? `<details open class="probs"><summary>Jev action probabilities</summary>${probRows}</details>` : ""}
-                    ${source}
-                `;
-            }
-            
-            pipeline.appendChild(decisionEl);
-            
-            // Fix (if needed)
-            if (currentState.stages.fix.status !== 'pending') {
-                pipeline.appendChild(createStageElement(
-                    '↓ Fixer Agent',
-                    currentState.stages.fix
-                ));
-            }
-            
-            // Merge
-            if (currentState.stages.merge.status !== 'pending') {
-                pipeline.appendChild(createStageElement(
-                    'Merge',
-                    currentState.stages.merge
-                ));
-            }
-        }
-        
-        function createStageElement(title, stage) {
-            const div = document.createElement('div');
-            div.className = `stage ${stage.status}`;
-            
-            let statusIcon = '⏳';
-            if (stage.status === 'success') statusIcon = '✅';
-            else if (stage.status === 'error') statusIcon = '🔴';
-            else if (stage.status === 'active') statusIcon = '🔄';
-            
-            div.innerHTML = `
-                <div class="stage-header">
-                    <div class="stage-title">${title}</div>
-                    <div class="stage-status">${statusIcon}</div>
-                </div>
-                <div class="stage-details">${stage.data.message || ''}</div>
-            `;
-            
-            return div;
+                    <div class="stage-details">${row.html}</div>`;
+                pipeline.appendChild(div);
+            });
         }
     </script>
 </body>

@@ -78,19 +78,21 @@ Respond with Python code only, no explanation.
 """
     
     def _checkout_branch(self, branch: str):
-        """Create and checkout branch"""
+        """Create or reset the demo branch from the current commit."""
         subprocess.run(
-            ["git", "checkout", "-b", branch],
+            ["git", "checkout", "-B", branch],
             cwd=self.repo_path,
             capture_output=True
         )
     
     def _apply_code(self, code: str):
-        """Apply generated code to the demo target"""
+        """Start from the clean seed, then append the generated refund code."""
+        seed_path = os.path.join(self.repo_path, "agentgate/demo-target/seed_app.py")
         app_path = os.path.join(self.repo_path, "agentgate/demo-target/app.py")
-        
-        # Append code to app.py
-        with open(app_path, "a") as f:
+        with open(seed_path, "r") as f:
+            base = f.read()
+        with open(app_path, "w") as f:
+            f.write(base)
             f.write("\n\n")
             f.write(code)
         
@@ -99,7 +101,7 @@ Respond with Python code only, no explanation.
     def _commit_and_push(self, branch: str, message: str):
         """Commit and push changes"""
         subprocess.run(
-            ["git", "add", "."],
+            ["git", "add", "agentgate/demo-target/app.py"],
             cwd=self.repo_path,
             capture_output=True
         )
@@ -226,7 +228,7 @@ Respond with Python code only, no explanation.
     def _commit_and_push(self, branch: str, message: str):
         """Commit and push changes"""
         subprocess.run(
-            ["git", "add", "."],
+            ["git", "add", "agentgate/demo-target/app.py"],
             cwd=self.repo_path,
             capture_output=True
         )

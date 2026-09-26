@@ -1,85 +1,54 @@
 #!/usr/bin/env python3
-"""
-Simple hardcoded demo that always works for presentation
-"""
-import time
-from datetime import datetime, timezone
+"""Run the real AgentGate loop and print each stage."""
+import os
+import sys
+from pathlib import Path
 
-print("\n" + "="*60)
-print("AgentGate - Autonomous PR Safety Loop")
-print("="*60 + "\n")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-print("Mode: OFFLINE DEMO\n")
+from src.adapters import create_adapters
+from src.agents import BuilderAgent, FixerAgent
+from src.orchestrator import Orchestrator
 
-print("="*60)
-print("PR #123 — Add refund endpoint")
-print("="*60 + "\n")
 
-# Builder
-print("✨ Builder Agent")
-print("   Status: ✅ Complete")
-print("   Branch: agentgate/add-refund-endpoint")
-print()
-time.sleep(1)
+def main():
+    repo = os.getenv("REPO_PATH", str(Path(__file__).resolve().parents[2]))
+    os.environ.pop("GITHUB_TOKEN", None)
+    os.environ.pop("JEV_API_KEY", None)
+    os.environ.pop("TYPESAFE_API_KEY", None)
 
-# Tests
-print("🧪 Tests")
-print("   Status: ✅ All tests pass")
-print()
-time.sleep(1)
+    adapters = create_adapters(repo)
+    print(f"\nAgentGate  mode={adapters['mode']}")
 
-# First Review
-print("🔍 CodeRabbit Review (Attempt 1)")
-print("   Status: 🔴 1 Critical Issue")
-print("   Finding: Missing authorization check - Any user can refund any payment")
-print()
-time.sleep(1)
+    def show(event):
+        data = event.data or {}
+        if event.type == "review_complete":
+            n = data.get("critical_count", 0)
+            print(f"CodeRabbit   {'🔴 ' + str(n) + ' Critical' if n else '🟢 Clean'}")
+        elif event.type == "decision_complete":
+            print(
+                f"Jev          {data.get('action', '').upper()}  "
+                f"risk {data.get('risk')} / 10  "
+                f"({data.get('source', 'jev')})"
+            )
+        elif event.type == "fix_complete":
+            print(f"Fixer        {data.get('message')}")
+        elif event.type == "merge_complete":
+            print("Merge        ✅")
 
-# Jev Decision 1
-print("🤖 Jev Decision")
-print("   Merge Safe: NO")
-print("   Risk Score: 9.2 / 10")
-print("   Confidence: 95.0%")
-print("   Action: FIX")
-print()
-time.sleep(1)
+    orch = Orchestrator(
+        builder=BuilderAgent(adapters["llm"], adapters["github"], repo),
+        fixer=FixerAgent(adapters["llm"], repo),
+        github=adapters["github"],
+        coderabbit=adapters["coderabbit"],
+        jev=adapters["jev"],
+        repo_path=repo,
+        event_callback=show,
+    )
+    result = orch.run_loop("Create a refund endpoint", "agentgate/add-refund-endpoint")
+    print(f"\nResult: {'MERGE' if result.get('success') else result.get('reason')}  attempts={result.get('attempts')}")
+    return 0 if result.get("success") else 1
 
-# Fixer
-print("🔧 Fixer Agent")
-print("   Status: ✅ Applied security fixes")
-print("   - Added user ownership verification")
-print("   - Added refund amount validation")
-print("   - Added double-refund prevention")
-print()
-time.sleep(1)
 
-# Second Review
-print("🔍 CodeRabbit Review (Attempt 2)")
-print("   Status: 🟢 Clean")
-print("   Findings: 0")
-print()
-time.sleep(1)
-
-# Jev Decision 2
-print("🤖 Jev Decision")
-print("   Merge Safe: YES")
-print("   Risk Score: 1.1 / 10")
-print("   Confidence: 98.0%")
-print("   Action: MERGE")
-print()
-time.sleep(1)
-
-# Merge
-print("🎉 Merge")
-print("   Status: ✅ PR MERGED")
-print()
-
-print("="*60)
-print("✅ Demo Complete - PR merged safely!")
-print("="*60)
-print()
-print("Summary:")
-print("  Attempts: 2")
-print("  Initial Risk: 9.2/10")
-print("  Final Risk: 1.1/10")
-print("  Result: SAFE TO MERGE")
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -45,11 +45,21 @@ async def get_state():
 async def start_demo():
     """Start a demo run"""
     global current_state
-    current_state["status"] = "running"
-    
-    # Run orchestrator in background
+    if current_state["status"] == "running":
+        return {"success": False, "message": "Demo already running"}
+    current_state = {
+        "mode": current_state.get("mode", "offline"),
+        "pr_number": 0,
+        "status": "running",
+        "events": []
+    }
+    while not event_queue.empty():
+        try:
+            event_queue.get_nowait()
+        except Exception:
+            break
+
     threading.Thread(target=run_demo_loop, daemon=True).start()
-    
     return {"success": True, "message": "Demo started"}
 
 
