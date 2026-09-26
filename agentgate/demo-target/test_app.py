@@ -91,6 +91,7 @@ def test_refund_requires_authentication():
     # Try to refund as different user (should fail)
     response = client.post("/refunds", json={
         "payment_id": payment_id,
+        "amount": 100.0,
         "user_id": "user2"  # Different user!
     })
     assert response.status_code == 403, "Refund must check user ownership"
