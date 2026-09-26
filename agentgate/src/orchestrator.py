@@ -68,6 +68,9 @@ class Orchestrator:
             self._emit_event("tests_start", pr_number, {"attempt": pr_state.attempt})
             test_results = self._run_tests()
             pr_state.test_results = test_results
+            print(f"[Tests] passed={test_results['passed']}, exit_code={test_results['exit_code']}")
+            if not test_results['passed']:
+                print(f"[Tests] Output:\n{test_results['output'][:500]}")
             self._emit_event("tests_complete", pr_number, test_results)
             
             # Get CodeRabbit review
