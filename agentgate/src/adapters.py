@@ -4,6 +4,7 @@ Each adapter has offline/hybrid/live modes based on env vars.
 """
 import os
 import json
+import re
 import time
 import subprocess
 from pathlib import Path
@@ -175,6 +176,25 @@ class CannedCodeRabbitAdapter(CodeRabbitAdapter):
         print(f"[CannedCodeRabbit] Simulated review request for PR #{pr_number}")
 
 
+def _coderabbit_message(body: str) -> str:
+    """Pull the finding title and explanation out of a CodeRabbit comment."""
+    text = re.sub(r"<!--.*?-->", " ", body, flags=re.S)
+    text = re.sub(r"<details>.*?</details>", " ", text, flags=re.S)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = text.replace("**", "")
+    lines = []
+    for raw in text.splitlines():
+        line = re.sub(r"\s+", " ", raw).strip(" |_")
+        if not line or line.startswith("http") or "Script executed" in line:
+            continue
+        if line.startswith("_") or "Prompt for AI" in line or "Analysis chain" in line:
+            continue
+        lines.append(line)
+    if not lines:
+        return ""
+    return " ".join(lines[:4])[:500]
+
+
 class LiveCodeRabbitAdapter(CodeRabbitAdapter):
     """Live mode: polls GitHub for CodeRabbit bot comments"""
     
@@ -210,7 +230,9 @@ class LiveCodeRabbitAdapter(CodeRabbitAdapter):
         
         findings = []
         for comment in response.json():
-            # Look for coderabbitai[bot] comments
+            # Top-level review notes only. Replies are commands such as autofix.
+            if comment.get("in_reply_to_id"):
+                continue
             if comment.get("user", {}).get("login") == "coderabbitai[bot]":
                 finding = self._parse_comment(comment)
                 if finding:
@@ -219,22 +241,32 @@ class LiveCodeRabbitAdapter(CodeRabbitAdapter):
         return findings
     
     def _parse_comment(self, comment: dict) -> Optional[Finding]:
-        """Parse a single CodeRabbit comment"""
+        """Parse a CodeRabbit inline comment from a real review."""
         body = comment.get("body", "")
-        
-        # Simple severity detection
-        severity = Severity.SUGGESTION
-        if any(word in body.lower() for word in ["critical", "security", "vulnerability"]):
+        if not body or body.strip().startswith("@coderabbit"):
+            return None
+
+        message = _coderabbit_message(body)
+        if not message:
+            return None
+
+        low = body.lower()
+        if any(word in low for word in ("critical", "idor", "cwe-639", "vulnerability")):
             severity = Severity.CRITICAL
-        elif "security" in body.lower():
+        elif "major" in low or "security" in low:
             severity = Severity.SECURITY
-        
+        elif "minor" in low:
+            severity = Severity.MAINTAINABILITY
+        else:
+            severity = Severity.SUGGESTION
+
+        category = "security" if severity == Severity.CRITICAL else "review"
         return Finding(
             severity=severity,
-            category="review",
+            category=category,
             file=comment.get("path", "unknown"),
-            line=comment.get("line", 0),
-            message=body[:200],  # Truncate for brevity
+            line=comment.get("line") or 0,
+            message=message,
             suggested_fix=None
         )
     
@@ -261,8 +293,9 @@ class StubJevAdapter(JevAdapter):
         tests_pass = pr_state.get("tests_pass", True)
         attempt = pr_state.get("attempt", 1)
         
-        # Always block on critical findings
-        critical_count = sum(1 for f in findings if f["severity"] == "critical")
+        # Block on critical and security findings. CodeRabbit labels an auth bypass
+        # "Minor" and an over-refund "Major"; both must stop a merge.
+        critical_count = sum(1 for f in findings if f["severity"] in ("critical", "security"))
         
         if critical_count > 0 or not tests_pass:
             # Stub (from recorded Jev response) for the buggy PR:
