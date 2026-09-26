@@ -13,6 +13,7 @@ app = FastAPI(title="Demo Orders API")
 # In-memory database
 orders_db = {}
 payments_db = {}
+refunds_db = {}
 
 
 class Order(BaseModel):
@@ -29,6 +30,12 @@ class Payment(BaseModel):
     amount: float
     status: str = "completed"
     created_at: Optional[str] = None
+
+
+class Refund(BaseModel):
+    payment_id: str
+    amount: float
+    user_id: str
 
 
 @app.get("/")
@@ -79,35 +86,39 @@ def get_payment(payment_id: str):
     return payments_db[payment_id]
 
 
-# NOTE: The refund endpoint will be added by the builder agent
-# and should introduce a bug (missing auth check, wrong amount, double refund, etc.)
-
-
-
-
-class Refund(BaseModel):
-    payment_id: str
-    amount: float
-    user_id: str
-
-
 @app.post("/refunds")
 def create_refund(refund: Refund):
-    """Create a refund for a payment"""
+    """Create a refund for a payment - FIXED VERSION"""
     if refund.payment_id not in payments_db:
         raise HTTPException(status_code=404, detail="Payment not found")
     
     payment = payments_db[refund.payment_id]
+    order_id = payment["order_id"]
+    order = orders_db[order_id]
     
-    # BUG: Missing authorization check! Should verify user owns the order
+    # FIXED: Verify user owns the order
+    if order["user_id"] != refund.user_id:
+        raise HTTPException(status_code=403, detail="Unauthorized: cannot refund other user's order")
+    
+    # FIXED: Validate refund amount
+    if refund.amount > payment["amount"]:
+        raise HTTPException(status_code=400, detail="Refund amount exceeds payment amount")
+    
+    # FIXED: Check for existing refund (prevent double refund)
+    for existing_refund in refunds_db.values():
+        if existing_refund["payment_id"] == refund.payment_id:
+            raise HTTPException(status_code=400, detail="Payment already refunded")
     
     refund_id = str(uuid.uuid4())
     refund_data = {
         "id": refund_id,
         "payment_id": refund.payment_id,
         "amount": refund.amount,
+        "user_id": refund.user_id,
         "status": "completed",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+    
+    refunds_db[refund_id] = refund_data
     
     return refund_data
