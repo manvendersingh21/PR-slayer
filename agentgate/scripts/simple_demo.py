@@ -1,85 +1,140 @@
 #!/usr/bin/env python3
 """
-Simple hardcoded demo that always works for presentation
+Simple terminal demo using REAL orchestrator and adapters
 """
-import time
-from datetime import datetime, timezone
+import sys
+import os
+from pathlib import Path
 
-print("\n" + "="*60)
-print("AgentGate - Autonomous PR Safety Loop")
-print("="*60 + "\n")
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-print("Mode: OFFLINE DEMO\n")
+from src.adapters import create_adapters
+from src.agents import BuilderAgent, FixerAgent
+from src.orchestrator import Orchestrator
 
-print("="*60)
-print("PR #123 — Add refund endpoint")
-print("="*60 + "\n")
 
-# Builder
-print("✨ Builder Agent")
-print("   Status: ✅ Complete")
-print("   Branch: agentgate/add-refund-endpoint")
-print()
-time.sleep(1)
+def format_event(event):
+    """Format event for pretty terminal output"""
+    icons = {
+        "builder_complete": "✨",
+        "tests_complete": "🧪",
+        "review_complete": "🔍",
+        "decision_complete": "🤖",
+        "fix_complete": "🔧",
+        "merge_complete": "🎉"
+    }
+    
+    icon = icons.get(event.type, "•")
+    
+    if event.type == "builder_complete":
+        print(f"\n{icon} Builder Agent")
+        print(f"   Status: ✅ Complete")
+        print(f"   PR: #{event.pr_number}")
+    
+    elif event.type == "tests_complete":
+        status = "✅ Pass" if event.data.get("passed") else "❌ Fail"
+        print(f"\n{icon} Tests")
+        print(f"   Status: {status}")
+    
+    elif event.type == "review_complete":
+        critical = event.data.get("critical_count", 0)
+        total = event.data.get("findings_count", 0)
+        if critical > 0:
+            print(f"\n{icon} CodeRabbit Review")
+            print(f"   Status: 🔴 {critical} Critical Issue{'s' if critical > 1 else ''}")
+            findings = event.data.get("findings", [])
+            for f in findings[:1]:  # Show first critical
+                if f["severity"] == "critical":
+                    print(f"   Finding: {f['message']}")
+        else:
+            print(f"\n{icon} CodeRabbit Review")
+            print(f"   Status: 🟢 Clean")
+    
+    elif event.type == "decision_complete":
+        decision = event.data
+        safe = "YES" if decision.get("merge_safe") else "NO"
+        risk = decision.get("risk", 0)
+        conf = decision.get("confidence", 0)
+        action = decision.get("action", "unknown").upper()
+        
+        print(f"\n{icon} Jev Decision")
+        print(f"   Merge Safe: {safe}")
+        print(f"   Risk Score: {risk:.1f} / 10")
+        print(f"   Confidence: {conf:.1f}%")
+        print(f"   Action: {action}")
+    
+    elif event.type == "fix_complete":
+        print(f"\n{icon} Fixer Agent")
+        print(f"   Status: ✅ Applied fixes")
+    
+    elif event.type == "merge_complete":
+        print(f"\n{icon} Merge")
+        print(f"   Status: ✅ PR MERGED")
 
-# Tests
-print("🧪 Tests")
-print("   Status: ✅ All tests pass")
-print()
-time.sleep(1)
 
-# First Review
-print("🔍 CodeRabbit Review (Attempt 1)")
-print("   Status: 🔴 1 Critical Issue")
-print("   Finding: Missing authorization check - Any user can refund any payment")
-print()
-time.sleep(1)
+def main():
+    print("\n" + "="*60)
+    print("AgentGate - Autonomous PR Safety Loop")
+    print("="*60 + "\n")
+    
+    # Setup
+    repo_path = os.getenv("REPO_PATH", "/workspace")
+    os.environ.pop("GITHUB_TOKEN", None)  # Force offline
+    os.environ.pop("JEV_API_KEY", None)
+    os.environ.pop("TYPESAFE_API_KEY", None)
+    
+    # Create adapters
+    adapters = create_adapters(repo_path)
+    print(f"Mode: {adapters['mode'].upper()}\n")
+    
+    # Create agents
+    builder = BuilderAgent(adapters["llm"], adapters["github"], repo_path)
+    fixer = FixerAgent(adapters["llm"], repo_path)
+    
+    # Event callback
+    events = []
+    def log_event(event):
+        events.append(event)
+        format_event(event)
+    
+    # Create orchestrator
+    orchestrator = Orchestrator(
+        builder=builder,
+        fixer=fixer,
+        github=adapters["github"],
+        coderabbit=adapters["coderabbit"],
+        jev=adapters["jev"],
+        repo_path=repo_path,
+        event_callback=log_event
+    )
+    
+    # Run loop
+    issue = "Create a refund endpoint"
+    branch = "agentgate/demo-refund-endpoint"
+    
+    print("="*60)
+    print("PR — Add refund endpoint")
+    print("="*60)
+    
+    result = orchestrator.run_loop(issue, branch)
+    
+    # Summary
+    print("\n" + "="*60)
+    if result["success"]:
+        print("✅ Demo Complete - PR merged safely!")
+    else:
+        print("⚠️  Demo Complete - Human review required")
+    print("="*60)
+    print()
+    print("Summary:")
+    print(f"  Attempts: {result['attempts']}")
+    if result.get('decision'):
+        print(f"  Final Risk: {result['decision']['risk']:.1f}/10")
+        print(f"  Result: {result['decision']['action'].upper()}")
+    
+    return 0 if result['success'] else 1
 
-# Jev Decision 1
-print("🤖 Jev Decision")
-print("   Merge Safe: NO")
-print("   Risk Score: 9.2 / 10")
-print("   Confidence: 95.0%")
-print("   Action: FIX")
-print()
-time.sleep(1)
 
-# Fixer
-print("🔧 Fixer Agent")
-print("   Status: ✅ Applied security fixes")
-print("   - Added user ownership verification")
-print("   - Added refund amount validation")
-print("   - Added double-refund prevention")
-print()
-time.sleep(1)
-
-# Second Review
-print("🔍 CodeRabbit Review (Attempt 2)")
-print("   Status: 🟢 Clean")
-print("   Findings: 0")
-print()
-time.sleep(1)
-
-# Jev Decision 2
-print("🤖 Jev Decision")
-print("   Merge Safe: YES")
-print("   Risk Score: 1.1 / 10")
-print("   Confidence: 98.0%")
-print("   Action: MERGE")
-print()
-time.sleep(1)
-
-# Merge
-print("🎉 Merge")
-print("   Status: ✅ PR MERGED")
-print()
-
-print("="*60)
-print("✅ Demo Complete - PR merged safely!")
-print("="*60)
-print()
-print("Summary:")
-print("  Attempts: 2")
-print("  Initial Risk: 9.2/10")
-print("  Final Risk: 1.1/10")
-print("  Result: SAFE TO MERGE")
+if __name__ == "__main__":
+    sys.exit(main())

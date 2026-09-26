@@ -279,9 +279,11 @@ class LiveJevAdapter(JevAdapter):
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.url = "https://api.typesafe.ai/v1/systemone"
+        self.available = True
+        self.last_error = None
     
     def decide(self, pr_state: Dict[str, Any]) -> JevDecision:
-        """Call real Jev API"""
+        """Call real Jev API with defensive parsing"""
         # Build state description
         findings = pr_state.get("findings", [])
         diff = pr_state.get("diff", "")
@@ -326,6 +328,7 @@ Diff preview:
         }
         
         try:
+            print("[Jev] Calling API...")
             response = requests.post(
                 self.url,
                 headers={
@@ -338,12 +341,32 @@ Diff preview:
             response.raise_for_status()
             data = response.json()
             
-            # Parse Jev response
-            answers = data.get("answers", {})
+            # Defensive parsing
+            if not isinstance(data, dict):
+                raise ValueError(f"Expected dict response, got {type(data)}")
             
-            merge_safe_prob = answers.get("merge_safe", {}).get("noul", 0.5)
-            risk_score = answers.get("risk", {}).get("score", 5.0)
-            action_choice = answers.get("action", {}).get("choice", "human_review")
+            answers = data.get("answers")
+            if not answers or not isinstance(answers, dict):
+                print(f"[Jev] Schema mismatch - raw response:")
+                print(json.dumps(data, indent=2))
+                raise ValueError("Missing or invalid 'answers' field")
+            
+            # Parse with defaults
+            merge_safe_data = answers.get("merge_safe", {})
+            merge_safe_prob = merge_safe_data.get("noul", 0.5) if isinstance(merge_safe_data, dict) else 0.5
+            
+            risk_data = answers.get("risk", {})
+            risk_score = risk_data.get("score", 5.0) if isinstance(risk_data, dict) else 5.0
+            
+            action_data = answers.get("action", {})
+            action_choice = action_data.get("choice", "human_review") if isinstance(action_data, dict) else "human_review"
+            
+            # Validate action
+            if action_choice not in ["merge", "fix", "human_review", "reject"]:
+                print(f"[Jev] Invalid action '{action_choice}', defaulting to human_review")
+                action_choice = "human_review"
+            
+            print(f"[Jev] ✅ API responded: action={action_choice}, risk={risk_score:.1f}")
             
             return JevDecision(
                 merge_safe=merge_safe_prob > 0.5,
@@ -353,16 +376,35 @@ Diff preview:
                 raw_response=data
             )
         
+        except requests.exceptions.RequestException as e:
+            self.available = False
+            self.last_error = f"Network error: {e}"
+            print(f"[Jev] ❌ Unavailable: {self.last_error}")
+            print("[Jev] Falling back to stub decision")
+            
+            # Fallback to stub
+            stub = StubJevAdapter()
+            return stub.decide(pr_state)
+        
+        except (ValueError, KeyError, json.JSONDecodeError) as e:
+            self.available = False
+            self.last_error = f"Parse error: {e}"
+            print(f"[Jev] ❌ Schema mismatch: {self.last_error}")
+            print("[Jev] Falling back to stub decision")
+            
+            # Fallback to stub
+            stub = StubJevAdapter()
+            return stub.decide(pr_state)
+        
         except Exception as e:
-            print(f"[Jev] API error: {e}, falling back to safe decision")
-            # Fail safe: require human review
-            return JevDecision(
-                merge_safe=False,
-                confidence=0.0,
-                risk=10.0,
-                action=Action.HUMAN_REVIEW,
-                raw_response={"error": str(e)}
-            )
+            self.available = False
+            self.last_error = str(e)
+            print(f"[Jev] ❌ Unexpected error: {self.last_error}")
+            print("[Jev] Falling back to stub decision")
+            
+            # Fallback to stub
+            stub = StubJevAdapter()
+            return stub.decide(pr_state)
 
 
 class LLMAdapter(ABC):
@@ -375,13 +417,26 @@ class LLMAdapter(ABC):
 
 
 class CannedLLMAdapter(LLMAdapter):
-    """Offline mode: canned buggy code"""
+    """Offline mode: canned buggy and fixed code"""
+    
+    def __init__(self):
+        self.call_count = 0
     
     def generate_code(self, prompt: str) -> str:
-        """Return buggy refund implementation"""
-        if "refund" in prompt.lower():
-            # Intentionally buggy: missing auth check
-            return '''
+        """Return buggy implementation first, then fixed version"""
+        self.call_count += 1
+        
+        if "refund" in prompt.lower() or "fix" in prompt.lower():
+            # First call (builder): buggy code
+            if self.call_count == 1:
+                return '''
+
+class Refund(BaseModel):
+    payment_id: str
+    amount: float
+    user_id: str
+
+
 @app.post("/refunds")
 def create_refund(refund: Refund):
     """Create a refund for a payment"""
@@ -398,17 +453,140 @@ def create_refund(refund: Refund):
         "payment_id": refund.payment_id,
         "amount": refund.amount,
         "status": "completed",
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     }
     
     return refund_data
+'''
+            
+            # Second+ call (fixer): complete fixed file
+            else:
+                return '''"""
+Demo Target API - Orders and Payments Backend
+This intentionally has bugs for the demo.
+"""
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+import uuid
+from datetime import datetime, timezone
+
+app = FastAPI(title="Demo Orders API")
+
+# In-memory database
+orders_db = {}
+payments_db = {}
+refunds_db = {}
+
+
+class Order(BaseModel):
+    id: Optional[str] = None
+    user_id: str
+    amount: float
+    status: str = "pending"
+    created_at: Optional[str] = None
+
+
+class Payment(BaseModel):
+    id: Optional[str] = None
+    order_id: str
+    amount: float
+    status: str = "completed"
+    created_at: Optional[str] = None
 
 
 class Refund(BaseModel):
     payment_id: str
     amount: float
     user_id: str
+
+
+@app.get("/")
+def root():
+    return {"message": "Orders API v1.0"}
+
+
+@app.post("/orders")
+def create_order(order: Order):
+    order_id = str(uuid.uuid4())
+    order.id = order_id
+    order.created_at = datetime.now(timezone.utc).isoformat()
+    orders_db[order_id] = order.dict()
+    return orders_db[order_id]
+
+
+@app.get("/orders/{order_id}")
+def get_order(order_id: str):
+    if order_id not in orders_db:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return orders_db[order_id]
+
+
+@app.post("/payments")
+def create_payment(payment: Payment):
+    if payment.order_id not in orders_db:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    order = orders_db[payment.order_id]
+    if order["status"] == "cancelled":
+        raise HTTPException(status_code=400, detail="Cannot pay for cancelled order")
+    
+    payment_id = str(uuid.uuid4())
+    payment.id = payment_id
+    payment.created_at = datetime.now(timezone.utc).isoformat()
+    payments_db[payment_id] = payment.dict()
+    
+    # Update order status
+    orders_db[payment.order_id]["status"] = "paid"
+    
+    return payments_db[payment_id]
+
+
+@app.get("/payments/{payment_id}")
+def get_payment(payment_id: str):
+    if payment_id not in payments_db:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    return payments_db[payment_id]
+
+
+@app.post("/refunds")
+def create_refund(refund: Refund):
+    """Create a refund for a payment - FIXED VERSION"""
+    if refund.payment_id not in payments_db:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    payment = payments_db[refund.payment_id]
+    order_id = payment["order_id"]
+    order = orders_db[order_id]
+    
+    # FIXED: Verify user owns the order
+    if order["user_id"] != refund.user_id:
+        raise HTTPException(status_code=403, detail="Unauthorized: cannot refund other user's order")
+    
+    # FIXED: Validate refund amount
+    if refund.amount > payment["amount"]:
+        raise HTTPException(status_code=400, detail="Refund amount exceeds payment amount")
+    
+    # FIXED: Check for existing refund (prevent double refund)
+    for existing_refund in refunds_db.values():
+        if existing_refund["payment_id"] == refund.payment_id:
+            raise HTTPException(status_code=400, detail="Payment already refunded")
+    
+    refund_id = str(uuid.uuid4())
+    refund_data = {
+        "id": refund_id,
+        "payment_id": refund.payment_id,
+        "amount": refund.amount,
+        "user_id": refund.user_id,
+        "status": "completed",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    refunds_db[refund_id] = refund_data
+    
+    return refund_data
 '''
+        
         return "# Code generation not implemented"
 
 
