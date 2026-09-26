@@ -16,6 +16,8 @@ Modern AI coding agents are fast but risky. They can generate entire features in
 
 The result: **autonomous code generation with production-grade safety**.
 
+This directory is the project root. It was extracted from [PR-slayer](https://github.com/manvendersingh21/PR-slayer) so it can live in its own repository.
+
 ## Quick Start
 
 **Terminal Demo (Fastest for hackathon):**
