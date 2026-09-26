@@ -91,6 +91,7 @@ class Orchestrator:
             self._emit_event("decision_start", pr_number, {"attempt": pr_state.attempt})
             
             jev_input = self._prepare_jev_input(pr_state)
+            print(f"[Jev Input] tests_pass={jev_input['tests_pass']}, findings={len(jev_input['findings'])}")
             decision = self.jev.decide(jev_input)
             pr_state.decision = decision
             
