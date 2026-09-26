@@ -91,6 +91,17 @@ class LiveGitHubAdapter(GitHubAdapter):
             "base": "main"
         }
         response = requests.post(url, headers=self.headers, json=data)
+        if response.status_code in (403, 422):
+            owner = self.repo.split("/")[0]
+            existing = requests.get(
+                url,
+                headers=self.headers,
+                params={"state": "open", "head": f"{owner}:{branch}"},
+            )
+            if existing.ok:
+                pulls = existing.json()
+                if isinstance(pulls, list) and pulls:
+                    return pulls[0]["number"]
         response.raise_for_status()
         return response.json()["number"]
     
@@ -108,11 +119,15 @@ class LiveGitHubAdapter(GitHubAdapter):
         response = requests.put(url, headers=self.headers)
         response.raise_for_status()
     
-    def add_comment(self, pr_number: int, comment: str):
-        """Add comment to PR"""
+    def add_comment(self, pr_number: int, comment: str) -> bool:
+        """Add comment to PR. Returns False when this token cannot comment."""
         url = f"{self.base_url}/repos/{self.repo}/issues/{pr_number}/comments"
         response = requests.post(url, headers=self.headers, json={"body": comment})
+        if response.status_code == 403:
+            print("[GitHub] Cannot comment with this token (403)")
+            return False
         response.raise_for_status()
+        return True
 
     def list_commit_shas(self, pr_number: int) -> list:
         """Commit SHAs currently on the pull request."""
@@ -208,8 +223,12 @@ class LiveCodeRabbitAdapter(CodeRabbitAdapter):
         }
         self.base_url = "https://api.github.com"
     
-    def get_review(self, pr_number: int, timeout: int = 120) -> List[Finding]:
-        """Poll for CodeRabbit review comments"""
+    def get_review(self, pr_number: int, timeout: int = 300) -> List[Finding]:
+        """Poll for CodeRabbit review comments.
+
+        An empty poll is not a clean review. A clean result is returned only
+        after CodeRabbit has actually posted a review with no findings.
+        """
         print(f"[LiveCodeRabbit] Polling for review on PR #{pr_number}...")
         
         start = time.time()
@@ -217,10 +236,32 @@ class LiveCodeRabbitAdapter(CodeRabbitAdapter):
             findings = self._parse_comments(pr_number)
             if findings:
                 return findings
+            if self._review_posted(pr_number):
+                return []
             time.sleep(5)
         
         print("[LiveCodeRabbit] Timeout waiting for review")
-        return []
+        return [
+            Finding(
+                severity=Severity.SECURITY,
+                category="review",
+                file="unknown",
+                line=0,
+                message="CodeRabbit did not post a review before the timeout. The pull request is unreviewed.",
+                suggested_fix=None,
+            )
+        ]
+
+    def _review_posted(self, pr_number: int) -> bool:
+        """True when CodeRabbit has finished a review, even with no inline comments."""
+        url = f"{self.base_url}/repos/{self.repo}/pulls/{pr_number}/reviews"
+        response = requests.get(url, headers=self.headers)
+        if not response.ok:
+            return False
+        for review in response.json():
+            if review.get("user", {}).get("login") == "coderabbitai[bot]":
+                return True
+        return False
     
     def _parse_comments(self, pr_number: int) -> List[Finding]:
         """Parse CodeRabbit comments into findings"""
@@ -271,8 +312,17 @@ class LiveCodeRabbitAdapter(CodeRabbitAdapter):
         )
     
     def request_review(self, pr_number: int):
-        """Request CodeRabbit review by adding comment"""
-        self.github.add_comment(pr_number, "@coderabbitai review")
+        """Request CodeRabbit review by adding comment.
+
+        A forbidden comment must not abort the loop. Polling still uses a
+        review that is already on the pull request.
+        """
+        posted = self.github.add_comment(pr_number, "@coderabbitai review")
+        if posted is False:
+            print(
+                "[LiveCodeRabbit] Could not request a review "
+                "(GitHub comment was forbidden). Using the review already on the pull request."
+            )
 
 
 class JevAdapter(ABC):

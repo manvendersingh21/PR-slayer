@@ -73,10 +73,9 @@ class Orchestrator:
             # Get CodeRabbit review
             self._emit_event("review_start", pr_number, {"attempt": pr_state.attempt})
             
-            # Request review if not first attempt
-            if pr_state.attempt > 1:
-                self.coderabbit.request_review(pr_number)
-                time.sleep(3)  # Brief delay for re-review
+            # Ask CodeRabbit on every attempt, including the first.
+            self.coderabbit.request_review(pr_number)
+            time.sleep(3)
             
             findings = self.coderabbit.get_review(pr_number)
             pr_state.findings = findings

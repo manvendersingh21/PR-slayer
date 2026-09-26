@@ -327,9 +327,10 @@
                 document.getElementById('startButton').disabled = false;
                 document.getElementById('startButton').textContent = 'Start Demo';
             } else if (event.type === 'review_complete') {
+                const findings = event.data.findings || [];
                 rows.push({
                     title: 'CodeRabbit',
-                    status: event.data.critical_count > 0 ? 'error' : 'success',
+                    status: findings.length ? 'error' : 'success',
                     html: reviewHtml(event.data)
                 });
             } else if (event.type === 'decision_complete') {
@@ -347,7 +348,7 @@
                     status: ok ? 'success' : 'error',
                     html: live
                         ? `${ok ? '✅' : '⚠️'} ${detail}`
-                        : `✅ ${detail}. Offline stand-in. Live mode posts @coderabbitai autofix.`
+                        : `${ok ? '✅' : '⚠️'} ${detail}. Offline stand-in. Live mode posts @coderabbitai autofix.`
                 });
             } else if (event.type === 'merge_complete') {
                 rows.push({ title: 'Merge', status: 'success', html: '✅ PR MERGED' });
