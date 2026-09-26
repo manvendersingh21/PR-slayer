@@ -257,23 +257,57 @@ class StubJevAdapter(JevAdapter):
         critical_count = sum(1 for f in findings if f["severity"] == "critical")
         
         if critical_count > 0 or not tests_pass:
-            # From real Jev response for buggy PR:
-            # noul=0.02, score=3.96 → 9.9/10, action=fix, confidence=0.93
+            # Stub (from recorded Jev response) for the buggy PR:
+            # noul=0.02, score=3.96 → 9.9/10, choice=fix, confidence=0.93
+            action = Action.FIX if attempt < 3 else Action.HUMAN_REVIEW
             return JevDecision(
                 merge_safe=False,
-                confidence=93.0,  # Stub (from recorded Jev response)
-                risk=9.9,  # Stub (from recorded Jev response: 3.96/4*10)
-                action=Action.FIX if attempt < 3 else Action.HUMAN_REVIEW
+                confidence=93.0,
+                risk=9.9,
+                action=action,
+                raw_response={
+                    "source": "stub (from recorded Jev response)",
+                    "answers": {
+                        "merge_safe": {"type": "noul", "noul": 0.02},
+                        "action": {
+                            "type": "choice",
+                            "choice": action.value,
+                            "confidence": 0.93,
+                            "probabilities": {
+                                "fix": 0.95,
+                                "merge": 0.0,
+                                "reject": 0.0,
+                                "human_review": 0.05,
+                            },
+                        },
+                    },
+                },
             )
         
-        # Clean PR
-        # From real Jev response for fixed PR:
-        # noul=0.84, score=1.08 → 2.7/10, action=merge, confidence=0.94
+        # Stub (from recorded Jev response) for the fixed PR:
+        # noul=0.84, score=1.08 → 2.7/10, choice=merge, confidence=0.94
         return JevDecision(
             merge_safe=True,
-            confidence=94.0,  # Stub (from recorded Jev response)
-            risk=2.7,  # Stub (from recorded Jev response: 1.08/4*10)
-            action=Action.MERGE
+            confidence=94.0,
+            risk=2.7,
+            action=Action.MERGE,
+            raw_response={
+                "source": "stub (from recorded Jev response)",
+                "answers": {
+                    "merge_safe": {"type": "noul", "noul": 0.84},
+                    "action": {
+                        "type": "choice",
+                        "choice": "merge",
+                        "confidence": 0.94,
+                        "probabilities": {
+                            "merge": 0.96,
+                            "human_review": 0.04,
+                            "fix": 0.0,
+                            "reject": 0.0,
+                        },
+                    },
+                },
+            },
         )
 
 
