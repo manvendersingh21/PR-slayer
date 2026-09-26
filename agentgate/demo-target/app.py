@@ -41,7 +41,7 @@ def create_order(order: Order):
     order_id = str(uuid.uuid4())
     order.id = order_id
     order.created_at = datetime.now(timezone.utc).isoformat()
-    orders_db[order_id] = order.dict()
+    orders_db[order_id] = order.model_dump()
     return orders_db[order_id]
 
 
@@ -64,7 +64,7 @@ def create_payment(payment: Payment):
     payment_id = str(uuid.uuid4())
     payment.id = payment_id
     payment.created_at = datetime.now(timezone.utc).isoformat()
-    payments_db[payment_id] = payment.dict()
+    payments_db[payment_id] = payment.model_dump()
     
     # Update order status
     orders_db[payment.order_id]["status"] = "paid"
@@ -81,25 +81,3 @@ def get_payment(payment_id: str):
 
 # NOTE: The refund endpoint will be added by the builder agent
 # and should introduce a bug (missing auth check, wrong amount, double refund, etc.)
-
-
-class Refund(BaseModel):
-    payment_id: str
-    amount: float
-    user_id: str
-
-
-@app.post("/refunds")
-def create_refund(refund: Refund):
-    """Refund a payment. Ownership is not checked."""
-    if refund.payment_id not in payments_db:
-        raise HTTPException(status_code=404, detail="Payment not found")
-    payment = payments_db[refund.payment_id]
-    return {
-        "id": str(uuid.uuid4()),
-        "payment_id": refund.payment_id,
-        "amount": refund.amount,
-        "user_id": refund.user_id,
-        "status": "completed",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
