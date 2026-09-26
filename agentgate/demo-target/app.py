@@ -83,6 +83,7 @@ def get_payment(payment_id: str):
 # and should introduce a bug (missing auth check, wrong amount, double refund, etc.)
 
 
+
 class Refund(BaseModel):
     payment_id: str
     amount: float
@@ -91,15 +92,17 @@ class Refund(BaseModel):
 
 @app.post("/refunds")
 def create_refund(refund: Refund):
-    """Refund a payment. Ownership is not checked."""
+    """Create a refund for a payment. Missing an ownership check on purpose."""
     if refund.payment_id not in payments_db:
         raise HTTPException(status_code=404, detail="Payment not found")
+
     payment = payments_db[refund.payment_id]
+    refund_id = str(uuid.uuid4())
     return {
-        "id": str(uuid.uuid4()),
+        "id": refund_id,
         "payment_id": refund.payment_id,
         "amount": refund.amount,
         "user_id": refund.user_id,
         "status": "completed",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat()
     }
