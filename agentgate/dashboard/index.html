@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentGate - Autonomous PR Safety Loop</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 800;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .header .tagline {
+            font-size: 20px;
+            opacity: 0.95;
+        }
+        
+        .mode-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        
+        .dashboard {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        
+        .start-button {
+            width: 100%;
+            padding: 20px;
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-bottom: 30px;
+        }
+        
+        .start-button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .start-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .pipeline {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .stage {
+            padding: 24px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 5px solid #e0e0e0;
+            transition: all 0.3s;
+        }
+        
+        .stage.active {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+        }
+        
+        .stage.success {
+            background: #d4edda;
+            border-left-color: #28a745;
+        }
+        
+        .stage.error {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+        }
+        
+        .stage-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        
+        .stage-title {
+            font-size: 20px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .stage-status {
+            font-size: 32px;
+        }
+        
+        .stage-details {
+            font-size: 16px;
+            color: #555;
+            line-height: 1.6;
+        }
+        
+        .metric {
+            display: inline-block;
+            background: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            margin-right: 12px;
+            margin-top: 8px;
+            font-weight: 600;
+        }
+        
+        .metric.critical {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .metric.success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .risk-meter {
+            margin-top: 12px;
+            padding: 16px;
+            background: white;
+            border-radius: 8px;
+        }
+        
+        .risk-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .risk-bar {
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        
+        .risk-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 12px;
+            color: white;
+            font-weight: 700;
+        }
+        
+        .findings-panel {
+            margin-top: 12px;
+            padding: 16px;
+            background: white;
+            border-radius: 8px;
+        }
+        
+        .finding {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .finding-severity {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 12px;
+            margin-right: 8px;
+        }
+        
+        .severity-critical {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .pr-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚡ AgentGate</h1>
+            <div class="tagline">Autonomous PR Safety Loop</div>
+            <div class="mode-badge" id="modeBadge">Loading...</div>
+        </div>
+        
+        <div class="dashboard">
+            <button class="start-button" id="startButton" onclick="startDemo()">
+                Start Demo
+            </button>
+            
+            <div id="content" class="hidden">
+                <div class="pr-title" id="prTitle">PR #0 — Loading...</div>
+                
+                <div class="pipeline" id="pipeline">
+                    <!-- Stages will be added dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let eventSource = null;
+        let currentState = {
+            stages: {
+                builder: { status: 'pending', data: {} },
+                tests: { status: 'pending', data: {} },
+                review: { status: 'pending', data: {} },
+                decision: { status: 'pending', data: {} },
+                fix: { status: 'pending', data: {} },
+                merge: { status: 'pending', data: {} }
+            }
+        };
+        
+        // Load initial state
+        fetch('/api/state')
+            .then(r => r.json())
+            .then(state => {
+                document.getElementById('modeBadge').textContent = 
+                    `Mode: ${state.mode.toUpperCase()}`;
+            });
+        
+        function startDemo() {
+            const button = document.getElementById('startButton');
+            button.disabled = true;
+            button.textContent = 'Running...';
+            
+            document.getElementById('content').classList.remove('hidden');
+            
+            // Start SSE
+            eventSource = new EventSource('/api/events');
+            eventSource.onmessage = handleEvent;
+            
+            // Trigger demo
+            fetch('/api/start', { method: 'POST' });
+        }
+        
+        function handleEvent(e) {
+            const event = JSON.parse(e.data);
+            console.log('Event:', event);
+            
+            // Update PR title
+            if (event.pr_number > 0) {
+                document.getElementById('prTitle').textContent = 
+                    `PR #${event.pr_number} — Add refund endpoint`;
+            }
+            
+            // Update stages based on event type
+            switch(event.type) {
+                case 'builder_start':
+                    updateStage('builder', 'active', { message: 'Building code...' });
+                    break;
+                case 'builder_complete':
+                    updateStage('builder', 'success', { message: '✅ Complete' });
+                    break;
+                case 'tests_start':
+                    updateStage('tests', 'active', { message: 'Running tests...' });
+                    break;
+                case 'tests_complete':
+                    const testStatus = event.data.passed ? 'success' : 'error';
+                    updateStage('tests', testStatus, {
+                        message: event.data.passed ? '✅ All tests pass' : '❌ Tests failed'
+                    });
+                    break;
+                case 'review_start':
+                    updateStage('review', 'active', { message: 'CodeRabbit reviewing...' });
+                    break;
+                case 'review_complete':
+                    const reviewStatus = event.data.critical_count > 0 ? 'error' : 'success';
+                    updateStage('review', reviewStatus, {
+                        findings_count: event.data.findings_count,
+                        critical_count: event.data.critical_count,
+                        findings: event.data.findings
+                    });
+                    break;
+                case 'decision_start':
+                    updateStage('decision', 'active', { message: 'Jev analyzing...' });
+                    break;
+                case 'decision_complete':
+                    updateStage('decision', 'success', {
+                        merge_safe: event.data.merge_safe,
+                        confidence: event.data.confidence,
+                        risk: event.data.risk,
+                        action: event.data.action
+                    });
+                    break;
+                case 'fix_start':
+                    updateStage('fix', 'active', { message: 'Agent fixing code...' });
+                    break;
+                case 'fix_complete':
+                    updateStage('fix', 'success', { message: '✅ Fix applied' });
+                    // Reset review and decision for next iteration
+                    updateStage('review', 'pending', {});
+                    updateStage('decision', 'pending', {});
+                    break;
+                case 'merge_complete':
+                    updateStage('merge', 'success', { message: '✅ PR MERGED' });
+                    document.getElementById('startButton').textContent = 'Demo Complete!';
+                    break;
+            }
+            
+            renderPipeline();
+        }
+        
+        function updateStage(stage, status, data) {
+            currentState.stages[stage] = { status, data };
+        }
+        
+        function renderPipeline() {
+            const pipeline = document.getElementById('pipeline');
+            pipeline.innerHTML = '';
+            
+            // Builder
+            pipeline.appendChild(createStageElement(
+                'Builder',
+                currentState.stages.builder
+            ));
+            
+            // Tests
+            pipeline.appendChild(createStageElement(
+                'Tests',
+                currentState.stages.tests
+            ));
+            
+            // CodeRabbit Review
+            const reviewStage = currentState.stages.review;
+            const reviewEl = createStageElement('CodeRabbit Review', reviewStage);
+            
+            if (reviewStage.status === 'success' || reviewStage.status === 'error') {
+                const details = reviewEl.querySelector('.stage-details');
+                
+                const critical = reviewStage.data.critical_count || 0;
+                const total = reviewStage.data.findings_count || 0;
+                
+                if (critical > 0) {
+                    details.innerHTML = `
+                        <span class="metric critical">🔴 ${critical} Critical Issue${critical > 1 ? 's' : ''}</span>
+                        <span class="metric">${total} Total Findings</span>
+                    `;
+                    
+                    // Show findings
+                    if (reviewStage.data.findings && reviewStage.data.findings.length > 0) {
+                        const panel = document.createElement('div');
+                        panel.className = 'findings-panel';
+                        
+                        reviewStage.data.findings.forEach(f => {
+                            if (f.severity === 'critical') {
+                                panel.innerHTML += `
+                                    <div class="finding">
+                                        <span class="finding-severity severity-critical">CRITICAL</span>
+                                        <strong>${f.file}:${f.line}</strong><br>
+                                        ${f.message}
+                                    </div>
+                                `;
+                            }
+                        });
+                        
+                        details.appendChild(panel);
+                    }
+                } else {
+                    details.innerHTML = '<span class="metric success">🟢 Clean</span>';
+                }
+            }
+            
+            pipeline.appendChild(reviewEl);
+            
+            // Jev Decision
+            const decisionStage = currentState.stages.decision;
+            const decisionEl = createStageElement('Jev Decision', decisionStage);
+            
+            if (decisionStage.status === 'success') {
+                const details = decisionEl.querySelector('.stage-details');
+                const data = decisionStage.data;
+                
+                details.innerHTML = `
+                    <span class="metric">Action: <strong>${data.action.toUpperCase()}</strong></span>
+                    <span class="metric">Confidence: ${data.confidence.toFixed(1)}%</span>
+                    <div class="risk-meter">
+                        <div class="risk-label">
+                            <span>Risk Score</span>
+                            <span>${data.risk.toFixed(1)} / 10</span>
+                        </div>
+                        <div class="risk-bar">
+                            <div class="risk-fill" style="width: ${data.risk * 10}%">
+                                ${data.risk.toFixed(1)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            pipeline.appendChild(decisionEl);
+            
+            // Fix (if needed)
+            if (currentState.stages.fix.status !== 'pending') {
+                pipeline.appendChild(createStageElement(
+                    '↓ Fixer Agent',
+                    currentState.stages.fix
+                ));
+            }
+            
+            // Merge
+            if (currentState.stages.merge.status !== 'pending') {
+                pipeline.appendChild(createStageElement(
+                    'Merge',
+                    currentState.stages.merge
+                ));
+            }
+        }
+        
+        function createStageElement(title, stage) {
+            const div = document.createElement('div');
+            div.className = `stage ${stage.status}`;
+            
+            let statusIcon = '⏳';
+            if (stage.status === 'success') statusIcon = '✅';
+            else if (stage.status === 'error') statusIcon = '🔴';
+            else if (stage.status === 'active') statusIcon = '🔄';
+            
+            div.innerHTML = `
+                <div class="stage-header">
+                    <div class="stage-title">${title}</div>
+                    <div class="stage-status">${statusIcon}</div>
+                </div>
+                <div class="stage-details">${stage.data.message || ''}</div>
+            `;
+            
+            return div;
+        }
+    </script>
+</body>
+</html>
