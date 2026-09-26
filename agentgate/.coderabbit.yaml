@@ -1,0 +1,29 @@
+# CodeRabbit configuration
+# Focus reviews on demo target code
+
+reviews:
+  # Auto-review PRs
+  auto_review:
+    enabled: true
+  
+  # Focus on demo target path
+  path_filters:
+    - "agentgate/demo-target/**"
+  
+  # Prioritize security and correctness
+  check_priority:
+    - security
+    - correctness
+    - performance
+  
+  # Review intensity
+  review_level: thorough
+  
+  # Auto-comment on issues
+  auto_comment: true
+
+# Language-specific settings
+languages:
+  python:
+    security_checks: true
+    test_coverage: true
