@@ -112,6 +112,13 @@ class LiveGitHubAdapter(GitHubAdapter):
         response = requests.post(url, headers=self.headers, json={"body": comment})
         response.raise_for_status()
 
+    def list_commit_shas(self, pr_number: int) -> list:
+        """Commit SHAs currently on the pull request."""
+        url = f"{self.base_url}/repos/{self.repo}/pulls/{pr_number}/commits"
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        return [commit.get("sha") for commit in response.json() if commit.get("sha")]
+
 
 class CodeRabbitAdapter(ABC):
     """Abstract CodeRabbit interface"""

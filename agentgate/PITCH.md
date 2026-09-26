@@ -1,15 +1,27 @@
-# 90-second pitch (JEVATHON)
+# How this wins the cash
 
-Say this, then hit Start. Do not narrate the architecture first.
+The only cash prizes are from CodeRabbit:
 
-> AI agents write code faster than anyone can review it. AgentGate is the control plane: the agent opens the PR, CodeRabbit finds the bug, and Jev is the only thing allowed to merge.
+- **$1,000**: best project **built with the Coding Agent**
+- **$500**: best tool use of CodeRabbit, and you must post about it publicly
+- **$300**: most Coding Agent feedback in their Discord
+
+Main track (1st–3rd) pays Devin credits, and the project must be built with Jev. AgentGate does both: Jev decides, the CodeRabbit Coding Agent writes the fix.
+
+## 90 seconds
+
+> Agents write code faster than anyone can review it. AgentGate is the control plane. CodeRabbit's Coding Agent writes the patch. Jev is the only thing allowed to merge.
 >
-> Watch. The builder ships a refund endpoint. CodeRabbit flags a critical auth hole. Jev says fix, 95% on fix, risk 9.9. The fixer patches it. CodeRabbit comes back clean. Jev says merge, 96% on merge, risk 2.7. It merges.
+> The refund PR ships with a missing auth check. CodeRabbit flags it critical. Jev says fix, 95 percent. We hand that finding to the Coding Agent with `@coderabbitai autofix`. It pushes the patch. CodeRabbit reviews again and comes back clean. Jev says merge, 96 percent, risk 2.7. It merges.
 >
-> CodeRabbit is the evidence. Jev is the decision. The agent only repairs what those two agree is broken. Nothing merges while a critical finding is open.
+> CodeRabbit is both the reviewer and the coder. Jev is the decision. Nothing merges while a critical finding is open.
 
-If a CodeRabbit judge asks "is this a real review?": live mode polls `coderabbitai[bot]` on the PR and posts `@coderabbitai review` after the fix. Offline mode replays a recorded review so the loop still finishes if the bot is slow.
+## Before you demo live
 
-If a Jev judge asks "is this a real decision?": with `JEV_API_KEY` set, the numbers on screen are the live `noul`, score, and choice probabilities. Without the key, the label says `stub (from recorded Jev response)` and the numbers are from a captured `jev-1.13.0` reply.
+1. Redeem coupon `JEVHACK1000` at coderabbit.ai → Billing → Usage → Agent usage → Redeem Coupon. You must be the workspace billing admin. No card.
+2. Confirm the CodeRabbit GitHub App is installed on the demo repo.
+3. Export `GITHUB_TOKEN`, `GITHUB_REPO`, and `JEV_API_KEY` on the laptop. Do not paste them into chat.
+4. Live mode posts `@coderabbitai autofix` and waits up to 3 minutes for the Coding Agent's commit. That is the $1,000 qualifying action.
+5. For the $500, post the demo publicly (X or LinkedIn) and include the repo link before judging.
 
-Do not paste API keys into chat or slides.
+Offline `python3 scripts/simple_demo.py` is the backup if the bot is slow. Say out loud that the live path is `@coderabbitai autofix`, and the offline patch is a stand-in.

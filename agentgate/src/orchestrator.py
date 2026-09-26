@@ -135,7 +135,9 @@ class Orchestrator:
                 fix_result = self.fixer.fix(
                     [self._finding_to_dict(f) for f in findings],
                     diff,
-                    branch
+                    branch,
+                    pr_number=pr_number,
+                    github=self.github if hasattr(self.github, "list_commit_shas") else None
                 )
                 
                 self._emit_event("fix_complete", pr_number, fix_result)
