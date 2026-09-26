@@ -52,13 +52,13 @@ Both demos run offline with no API keys needed.
 3. **First review**: "CodeRabbit catches a critical security bug"
    - Shows: 🔴 1 Critical Issue - Missing authorization check
 4. **Jev decision**: "Jev analyzes and blocks the merge"
-   - Shows: Risk 9.2/10, Decision: FIX
+   - Shows: Risk 9.9/10, Decision: FIX
 5. **Fixer repairs**: "The fixer agent patches the security hole"
    - Shows: ↓ Fixer Agent ✅ Fix applied
 6. **Second review**: "CodeRabbit re-reviews and finds it clean"
    - Shows: 🟢 Clean
 7. **Jev approves**: "Jev recalculates and approves"
-   - Shows: Risk 1.1/10, Decision: MERGE
+   - Shows: Risk 2.7/10, Decision: MERGE
 8. **Merge**: "PR merges safely"
    - Shows: ✅ PR MERGED
 
@@ -305,7 +305,7 @@ MIT
 
 ## Credits
 
-Built for the [Hackathon Name] by [Your Name]
+Built for JEVATHON.
 
 - **Jev**: TypeSafe AI's decision API - https://thejevai.com
 - **CodeRabbit**: AI code reviewer - https://coderabbit.ai

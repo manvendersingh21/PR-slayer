@@ -452,9 +452,6 @@ class LiveJevAdapter(JevAdapter):
             noul = merge_safe_data.get("noul", 0.5)
             merge_safe = noul >= 0.5
             
-            # Confidence: noul*100 when yes, (1-noul)*100 when no
-            confidence = noul * 100 if merge_safe else (1 - noul) * 100
-            
             # Parse risk (score with legend)
             risk_data = answers.get("risk", {})
             risk_score = risk_data.get("score", 2.5)
@@ -491,7 +488,7 @@ class LiveJevAdapter(JevAdapter):
         except requests.exceptions.RequestException as e:
             self.available = False
             self.last_error = f"Network error: {e}"
-            print(f"[Jev] ❌ Unavailable: {self.last_error}")
+            print(f"[Jev] Jev unavailable: {self.last_error}")
             print("[Jev] Falling back to stub decision")
             stub = StubJevAdapter()
             return stub.decide(pr_state)
@@ -499,7 +496,7 @@ class LiveJevAdapter(JevAdapter):
         except (ValueError, KeyError, json.JSONDecodeError) as e:
             self.available = False
             self.last_error = f"Parse error: {e}"
-            print(f"[Jev] ❌ Schema mismatch: {self.last_error}")
+            print(f"[Jev] Jev unavailable: {self.last_error}")
             print("[Jev] Falling back to stub decision")
             stub = StubJevAdapter()
             return stub.decide(pr_state)
@@ -507,7 +504,7 @@ class LiveJevAdapter(JevAdapter):
         except Exception as e:
             self.available = False
             self.last_error = str(e)
-            print(f"[Jev] ❌ Unexpected error: {self.last_error}")
+            print(f"[Jev] Jev unavailable: {self.last_error}")
             print("[Jev] Falling back to stub decision")
             stub = StubJevAdapter()
             return stub.decide(pr_state)
@@ -623,8 +620,10 @@ class LiveLLMAdapter(LLMAdapter):
             return f"# Error: {e}"
 
 
-def create_adapters(repo_path: str = "/workspace") -> Dict[str, Any]:
+def create_adapters(repo_path: str | None = None) -> Dict[str, Any]:
     """Factory to create adapters based on env vars"""
+    if repo_path is None:
+        repo_path = str(Path(__file__).resolve().parents[2])
     github_token = os.getenv("GITHUB_TOKEN")
     github_repo = os.getenv("GITHUB_REPO", "manvendersingh21/PR-slayer")
     jev_key = os.getenv("JEV_API_KEY") or os.getenv("TYPESAFE_API_KEY")
